@@ -18,6 +18,7 @@ import AssetDepositTracker from '../../pages/transactions/AssetDepositTracker';
 import RokdaManagement from '../../pages/transactions/RokdaManagement';
 import CashManagement from '../../pages/transactions/CashManagement';
 import DailyMISManagement from '../../pages/transactions/DailyMISManagement';
+import PayrollExceptions from '../../pages/transactions/PayrollExceptions';
 import EarningEntry from '../../pages/transactions/EarningEntry';
 import DeductionEntry from '../../pages/transactions/DeductionEntry';
 import ProductionEntry from '../../pages/transactions/ProductionEntry';
@@ -39,6 +40,7 @@ export const TransactionsRoutes = (currentUser: User | null) => {
       <Route path="rokda-management" element={<ProtectedRoute moduleCode="K" pageKey="rokdaManagement"><RokdaManagement currentUser={currentUser!} onRedirect={() => {}} /></ProtectedRoute>} />
       <Route path="cash-management" element={<ProtectedRoute moduleCode="K" pageKey="cashManagement"><CashManagement /></ProtectedRoute>} />
       <Route path="daily-mis" element={<ProtectedRoute moduleCode="K" pageKey="dailyMis"><DailyMISManagement currentUser={currentUser!} onRedirect={() => {}} /></ProtectedRoute>} />
+      <Route path="payroll-exceptions" element={<ProtectedRoute moduleCode="K" pageKey="salary"><PayrollExceptions /></ProtectedRoute>} />
       <Route path="earning" element={<ProtectedRoute moduleCode="K" pageKey="earningEntry"><EarningEntry currentUser={currentUser!} /></ProtectedRoute>} />
       <Route path="deduction" element={<ProtectedRoute moduleCode="K" pageKey="deductionEntry"><DeductionEntry currentUser={currentUser!} /></ProtectedRoute>} />
       <Route path="production" element={<ProtectedRoute moduleCode="K" pageKey="productionEntry"><ProductionEntry /></ProtectedRoute>} />

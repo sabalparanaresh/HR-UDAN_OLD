@@ -13,6 +13,7 @@ export interface DailyMISEntry {
   standard_rate: number;
   worked_rate: number;
   variance: number;
+  attendance_qty?: number;
 }
 
 export function useDailyMIS(date: string) {

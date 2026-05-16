@@ -1,5 +1,5 @@
 import RBACDebugPanel from '../common/RBACDebugPanel';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { Toaster, toast } from 'sonner';
@@ -8,6 +8,8 @@ import { useHotkeys } from '../../hooks/useHotkeys';
 import { useRegisterShortcut } from '../common/ShortcutProvider';
 import { useModule } from '../../contexts/ModuleContext';
 import { CircuitBreaker } from '../layout/CircuitBreaker';
+import { useWorkspaceStore } from '../../store/workspaceStore';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface LayoutProps {
   currentUser: any;
@@ -16,6 +18,10 @@ interface LayoutProps {
 
 export default function Layout({ currentUser, onLogout }: LayoutProps) {
   const { currentMode, isConnected } = useModule();
+  const setLastRoute = useWorkspaceStore(state => state.setLastRoute);
+  const toggleWorkspace = useWorkspaceStore(state => state.toggleWorkspace);
+  const lastRoutes = useWorkspaceStore(state => state.lastRoutes);
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -25,10 +31,17 @@ export default function Layout({ currentUser, onLogout }: LayoutProps) {
     
     // K module only routes
     if (currentMode === 'P' && (path.includes('rokda-management') || path.includes('daily-mis'))) {
-      navigate('/');
+      const fallback = '/reports/dashboard';
+      navigate(fallback);
       toast.info("Redirected to Module P Dashboard", { description: "This feature is not available in P Module" });
     }
   }, [currentMode, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (location.pathname !== '/') {
+      setLastRoute(currentMode, location.pathname + location.search);
+    }
+  }, [location.pathname, location.search, currentMode, setLastRoute]);
 
   const applyFeedback = (el: HTMLElement) => {
     el.classList.add('animate-pulse-ring');
@@ -36,6 +49,24 @@ export default function Layout({ currentUser, onLogout }: LayoutProps) {
       el.classList.remove('animate-pulse-ring');
     }, 600);
   };
+
+  useRegisterShortcut({ key: 'alt+shift+k', description: 'Workspace Toggle (Module K/P)' });
+  useHotkeys('alt+shift+k', () => {
+    const nextMode = currentMode === 'K' ? 'P' : 'K';
+    toggleWorkspace();
+    
+    // Apply shell transition (e.g. body flash or layout fade)
+    document.body.classList.add('workspace-transition-flash');
+    setTimeout(() => document.body.classList.remove('workspace-transition-flash'), 300);
+
+    const nextRoute = lastRoutes[nextMode] || '/reports/dashboard';
+    navigate(nextRoute);
+    
+    toast.success(`Switched to Module ${nextMode}`, { 
+        duration: 1500,
+        className: "font-mono text-[10px] uppercase tracking-widest border-primary-navy/20 bg-white/80 backdrop-blur-md"
+    });
+  }, { globalOverride: true });
 
   useRegisterShortcut({ key: 'alt+s', description: 'Save / Update Data' });
   useHotkeys('alt+s', () => {
@@ -107,13 +138,15 @@ export default function Layout({ currentUser, onLogout }: LayoutProps) {
       <Sidebar currentUser={currentUser} onLogout={onLogout} />
       
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 border-b border-app-border flex items-center px-8 justify-between bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm">
+        <header className="h-16 border-b border-app-border flex items-center px-8 justify-between bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm transition-colors duration-300">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-slate-50 rounded-md border border-app-border">
               <LayoutDashboard size={18} className="text-primary-navy" />
             </div>
             <div>
-              <h2 className="textile-header text-lg font-bold text-primary-navy">System Dashboard</h2>
+              <h2 className="textile-header text-lg font-bold text-primary-navy">
+                System Dashboard {currentMode === 'P' ? '(Statutory)' : '(Primary)'}
+              </h2>
               <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest">Mill Management // Real-Time</p>
             </div>
           </div>
@@ -145,11 +178,20 @@ export default function Layout({ currentUser, onLogout }: LayoutProps) {
           </div>
         </header>
 
-        <main className="flex-1 p-8 overflow-auto">
-          <div className="max-w-7xl mx-auto">
-            <CircuitBreaker />
-            <Outlet context={{ currentUser }} />
-          </div>
+        <main className="flex-1 p-8 overflow-auto relative overflow-x-hidden">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentMode}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.2 }}
+              className="max-w-7xl mx-auto min-h-full"
+            >
+              <CircuitBreaker />
+              <Outlet context={{ currentUser }} />
+            </motion.div>
+          </AnimatePresence>
         </main>
 
         <footer className="h-8 border-t border-app-border bg-white px-8 flex items-center justify-between text-[10px] font-mono text-text-muted">
@@ -170,3 +212,4 @@ export default function Layout({ currentUser, onLogout }: LayoutProps) {
     </div>
   );
 }
+

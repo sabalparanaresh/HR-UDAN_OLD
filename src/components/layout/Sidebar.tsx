@@ -36,7 +36,8 @@ import {
   Coffee,
   FileSpreadsheet,
   Cloud,
-  ClipboardList
+  ClipboardList,
+  AlertTriangle
 } from 'lucide-react';
 
 import { clsx, type ClassValue } from 'clsx';
@@ -139,6 +140,7 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
           items: [
             { label: "Salary Heads", path: "/hr-settings/salary-heads", icon: <Calculator size={16} /> },
             { label: "Salary Slabs", path: "/hr-settings/salary-slabs", icon: <Calculator size={16} /> },
+            { label: "Payroll Rules", path: "/hr-settings/payroll-rules", icon: <Settings size={16} />, module: "K" },
             { label: "Piece Rate Config", path: "/hr-settings/piece-rate", icon: <Settings size={16} /> },
             { label: "Statutory Settings", path: "/hr-settings/statutory-settings", icon: <ShieldCheck size={16} /> },
             { label: "Loan Types", path: "/hr-settings/loan-types", icon: <Calculator size={16} /> },
@@ -171,7 +173,8 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
         ...(currentMode === 'K' ? [
           { label: "Cash Worker Management", path: "/transactions/rokda-management", icon: <IndianRupee size={16} /> },
           { label: "Cash Management", path: "/transactions/cash-management", icon: <IndianRupee size={16} /> },
-          { label: "Daily MIS", path: "/transactions/daily-mis", icon: <Activity size={16} /> }
+          { label: "Daily MIS", path: "/transactions/daily-mis", icon: <Activity size={16} /> },
+          { label: "Payroll Exceptions", path: "/transactions/payroll-exceptions", icon: <AlertTriangle size={16} /> }
         ] : []),
         { label: "Earning Transaction", path: "/transactions/earning", icon: <Plus size={16} /> },
         { label: "Deduction Transaction", path: "/transactions/deduction", icon: <Minus size={16} /> },
@@ -194,7 +197,6 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
       items: [
         { label: "User Access Control", path: "/user-management/access-control", icon: <ShieldCheck size={16} /> },
         { label: "System Connection", path: "/user-management/system-connection", icon: <Activity size={16} /> },
-        { label: "Cloud Sync Monitor", path: "/user-management/cloud-sync", icon: <Cloud size={16} /> },
       ]
     }
   ];
@@ -202,7 +204,6 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
   const pageMapping: Record<string, string> = {
     "/user-management/access-control": "USER_MGMT_VIEW",
     "/user-management/system-connection": "USER_MGMT_VIEW",
-    "/user-management/cloud-sync": "USER_MGMT_VIEW",
     "/transactions/attendance": "Attendance.view",
     "/transactions/salary": "Payroll.view",
     "/reports/engine": "ReportingEngine.view",
@@ -212,6 +213,7 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
     "/transactions/daily-mis": "DailyMIS.view",
     "/employee/master": "Employee.view",
     "/hr-settings/company": "SETTINGS_VIEW",
+    "/hr-settings/payroll-rules": "SETTINGS_VIEW",
     "/transactions/advance": "Advance.view"
   };
 

@@ -6,14 +6,12 @@ import { User } from '../../types';
 
 import UserManagementTabs from '../../pages/user-management/UserManagementTabs';
 import SystemConnection from '../../pages/user-management/SystemConnection';
-import CloudSyncMonitor from '../../pages/user-management/CloudSyncMonitor';
 
 export const UserManagementRoutes = (currentUser: User | null) => {
   return (
     <Route path="user-management">
       <Route path="access-control" element={<ProtectedRoute moduleCode="K" pageKey="userManagementK"><UserManagementTabs /></ProtectedRoute>} />
       <Route path="system-connection" element={<ProtectedRoute moduleCode="*" pageKey="systemConnection"><SystemConnection currentUser={currentUser!} /></ProtectedRoute>} />
-      <Route path="cloud-sync" element={<ProtectedRoute moduleCode="*" pageKey="cloudSync"><CloudSyncMonitor /></ProtectedRoute>} />
     </Route>
   );
 };
