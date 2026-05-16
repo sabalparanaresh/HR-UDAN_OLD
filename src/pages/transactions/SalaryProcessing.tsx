@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { 
   Calculator, 
   CheckCircle, 
@@ -20,7 +21,8 @@ import {
   ShieldAlert,
   Zap,
   ArrowRightLeft,
-  Settings
+  Settings,
+  AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { User as UserType, Department, Location, Group, Division } from '../../types';
@@ -39,6 +41,148 @@ function cn(...inputs: ClassValue[]) {
 
 type PayrollStep = 'Filtering' | 'K_Processing' | 'P_Syncing' | 'Consolidating';
 
+const safeJsonParse = (str: any) => {
+  if (typeof str === 'object' && str !== null) return str;
+  if (!str) return {};
+  try {
+    const res = JSON.parse(str);
+    return (typeof res === 'object' && res !== null) ? res : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+const EmployeeTableRow = memo(({ 
+  item, 
+  kLogicSource, 
+  kOnlyHeads, 
+  kpHeads, 
+  setSelectedEmployeeSlip,
+  virtualRow,
+  measureElement
+}: any) => {
+  return (
+    <tr 
+      ref={measureElement}
+      data-index={virtualRow.index}
+      className="border-b border-app-border hover:bg-slate-50 transition-colors group cursor-pointer" 
+      onClick={() => setSelectedEmployeeSlip(item)}
+    >
+      <td className="p-3 sticky left-0 bg-white group-hover:bg-slate-50 z-10 border-r border-app-border" style={{ minWidth: '220px' }}>
+        <div className="flex flex-col">
+          <span className="font-bold text-[13px] text-primary-navy tracking-tight truncate max-w-[200px]" title={item.name}>{item.name}</span>
+          <span className="text-[11px] font-mono text-text-muted mt-0.5">{item.emp_code}</span>
+          <span className="text-[10px] font-semibold text-text-muted uppercase mt-1 truncate max-w-[200px]" title={item.department}>{item.department}</span>
+          {item.exception && (
+            <span className="text-[10px] items-center gap-1 inline-flex font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 mt-1 rounded"><AlertTriangle size={10} /> {item.exception}</span>
+          )}
+        </div>
+      </td>
+      <td className="p-3 sticky bg-white group-hover:bg-slate-50 z-10 border-r border-app-border" style={{ left: '220px', minWidth: '140px' }}>
+        <div className="flex flex-col">
+          <span className="text-[11px] font-medium text-text-muted uppercase tracking-tighter truncate max-w-[130px]" title={item.category}>{item.category}</span>
+          <div className="h-[1px] w-full bg-slate-200 my-1.5" />
+          <span className="text-[11px] font-medium text-text-muted uppercase tracking-tighter truncate max-w-[130px]" title={item.class}>{item.class}</span>
+        </div>
+      </td>
+      <td className="p-3 bg-blue-50/5 border-r border-app-border whitespace-nowrap">
+        <div className="flex flex-col space-y-1">
+          {kLogicSource === 'DAILY_MIS' ? (
+            <>
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-[11px] text-text-muted uppercase tracking-wider">MIS Atd:</span>
+                <span className="text-[13px] font-bold text-primary-navy">{item.k_attendance}</span>
+              </div>
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-[11px] text-text-muted uppercase tracking-wider">Avg Rate:</span>
+                <span className="text-[13px] font-bold text-blue-600">₹{item.k_attendance && item.k_attendance > 0 ? (item.k_gross_payable / item.k_attendance).toLocaleString(undefined, {maximumFractionDigits: 2}) : '0'}</span>
+              </div>
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-[11px] text-text-muted uppercase tracking-wider">MIS Gross:</span>
+                <span className="text-[13px] font-bold text-primary-navy">₹{item.k_gross_payable?.toLocaleString()}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-[11px] text-text-muted uppercase tracking-wider">Atd:</span>
+                <span className="text-[13px] font-bold text-primary-navy">{item.k_attendance}</span>
+              </div>
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-[11px] text-text-muted uppercase tracking-wider">Rate:</span>
+                <span className="text-[13px] font-bold text-blue-600">₹{item.wage_rate?.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-[11px] text-text-muted uppercase tracking-wider">Gross:</span>
+                <span className="text-[13px] font-bold text-primary-navy">₹{item.k_gross_payable?.toLocaleString()}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </td>
+      {kOnlyHeads.map((h: any) => {
+         const earnings = safeJsonParse(item.k_other_earnings || '{}');
+         const deductions = safeJsonParse(item.k_deductions || '{}');
+         const val = h.type === 'EARNING' ? earnings[h.name] : deductions[h.name];
+         return (
+           <td key={h.id} className="p-3 bg-blue-50/5 text-right whitespace-nowrap">
+             <span className={cn("text-[13px] font-semibold", h.type === 'EARNING' ? "text-primary-navy" : "text-rose-600")}>
+               {val ? `₹${val.toLocaleString()}` : '-'}
+             </span>
+           </td>
+         );
+      })}
+      <td className="p-3 bg-amber-50/5 border-l border-r border-app-border whitespace-nowrap">
+        {item.p_attendance !== undefined ? (
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-center gap-4">
+              <span className="text-[11px] text-text-muted uppercase tracking-wider">Atd:</span>
+              <span className="text-[13px] font-bold text-primary-navy">{item.p_attendance}</span>
+            </div>
+            <div className="flex justify-between items-center gap-4">
+              <span className="text-[11px] text-text-muted uppercase tracking-wider">Rate:</span>
+              <span className="text-[13px] font-bold text-amber-600">₹{item.statutory_rate?.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center gap-4">
+              <span className="text-[11px] text-text-muted uppercase tracking-wider">Gross:</span>
+              <span className="text-[13px] font-bold text-primary-navy">₹{item.p_gross_statutory_payable?.toLocaleString()}</span>
+            </div>
+          </div>
+        ) : (
+          <span className="text-[11px] italic text-text-muted">Sync pending...</span>
+        )}
+      </td>
+      {kpHeads.map((h: any) => {
+         const pOther = safeJsonParse(item.p_other_earnings_kp || '{}');
+         const pDeductions = safeJsonParse(item.p_deductions || '{}');
+         const val = h.type === 'EARNING' ? pOther[h.name] : pDeductions[h.name];
+         return (
+           <td key={h.id} className="p-3 bg-amber-50/5 text-right whitespace-nowrap">
+             <span className={cn("text-[13px] font-semibold", h.type === 'EARNING' ? "text-amber-700" : "text-rose-600")}>
+               {val ? `₹${val.toLocaleString()}` : '-'}
+             </span>
+           </td>
+         );
+      })}
+      <td className="p-4 text-right bg-blue-50/10 border-l border-app-border whitespace-nowrap">
+        <span className="text-sm font-bold text-blue-700">
+          ₹{ (item.k_net_payable || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+        </span>
+      </td>
+      <td className="p-4 text-right bg-emerald-50/30 border-l border-app-border whitespace-nowrap">
+        <span className="text-sm font-bold text-emerald-700">
+          ₹{ (item.net_payable_final || item.k_net_payable || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+        </span>
+      </td>
+      <td className="p-4 text-right bg-rose-50/30 border-l border-app-border whitespace-nowrap">
+        <span className={cn("text-sm font-black", (item.k_net_payable || 0) - (item.net_payable_final || item.k_net_payable || 0) !== 0 ? 'text-rose-600' : 'text-slate-400')}>
+          ₹{ ((item.k_net_payable || 0) - (item.net_payable_final || item.k_net_payable || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+        </span>
+      </td>
+    </tr>
+  );
+});
+
 export default function SalaryProcessing({ currentUser }: { currentUser: UserType | null }) {
   const { currentMode, setMode } = useModule();
   const [currentStep, setCurrentStep] = useState<PayrollStep>('Filtering');
@@ -52,16 +196,6 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   const [kResults, setKResults] = useState<any[]>([]);
   const [mergedResults, setMergedResults] = useState<any[]>([]);
   
-  const safeJsonParse = (str: any) => {
-  if (typeof str === 'object' && str !== null) return str;
-  if (!str) return {};
-  try {
-    const res = JSON.parse(str);
-    return (typeof res === 'object' && res !== null) ? res : {};
-  } catch (e) {
-    return {};
-  }
-};
   const [gridData, setGridData] = useState<any[]>([]);
   const [kOnlyHeads, setKOnlyHeads] = useState<any[]>([]);
   const [kpHeads, setKpHeads] = useState<any[]>([]);
@@ -131,6 +265,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   const [selectedDesignationIds, setSelectedDesignationIds] = useState<number[]>([]);
 
   const [isCircuitBroken, setIsCircuitBroken] = useState(false);
+  const [kLogicSource, setKLogicSource] = useState<string>('EMPLOYEE_MASTER');
 
   // Alt + Shift + K shortcut
   useHotkeys('alt+shift+k', () => {
@@ -141,7 +276,19 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   useEffect(() => {
     fetchFilters();
     fetchKOnlyHeads();
+    fetchPayrollRules();
   }, [currentMode]);
+
+  const fetchPayrollRules = async () => {
+    try {
+      const rules = await invoke<any>('get_payroll_rules');
+      if (rules && rules.k_salary_calculation_source) {
+        setKLogicSource(rules.k_salary_calculation_source);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchKOnlyHeads = async () => {
     try {
@@ -180,7 +327,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   const handleProcessKModule = async () => {
     setLoading(true);
     try {
-      const data = await invoke<any[]>('calculate_k_module_wages', {
+      const response = await invoke<any>('calculate_k_module_wages', {
         month: selectedMonth,
         filters: {
           departmentId: selectedDeptIds.length > 0 ? selectedDeptIds : null,
@@ -192,9 +339,18 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
           designationId: selectedDesignationIds.length > 0 ? selectedDesignationIds : null,
         }
       });
-      setKResults(data);
+      const rawData = Array.isArray(response) ? response : response.employees;
+      const validData = rawData.filter((r: any) => !r.exception);
+      const exceptionCount = rawData.length - validData.length;
+      
+      setKResults(validData);
       setCurrentStep('K_Processing');
-      toast.success(`K-Module Processing Complete: ${data.length} actuals calculated.`);
+      
+      if (response && !Array.isArray(response) && response.meta) {
+        toast.success(`K-Module Processing Complete: ${validData.length} valid / ${exceptionCount} exceptions. Engine: ${response.meta.active_salary_engine} in ${response.meta.total_time_ms}ms (Query: ${response.meta.query_time_ms}ms).`);
+      } else {
+        toast.success(`K-Module Processing Complete: ${validData.length} valid / ${exceptionCount} exceptions.`);
+      }
     } catch (error: any) {
       toast.error("K-Module Error: " + (error.error || error.message || String(error)));
     } finally {
@@ -357,6 +513,11 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
 
       const row: any = { ...r };
 
+      if (kLogicSource === 'DAILY_MIS') {
+        row.wage_rate = r.k_attendance && r.k_attendance > 0 ? Number((r.k_gross_wage / r.k_attendance).toFixed(2)) : 0;
+      }
+      row.salary_source_engine = kLogicSource;
+
       // K Earnings (K_ONLY)
       kEarningHeads.forEach(h => { row[`k_earning_${h.id}`] = kEarnings[h.name] || 0; });
       // K Deductions (K_ONLY)
@@ -429,6 +590,14 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
       ))}
     </div>
   );
+
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: gridData.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 140, // Estimated height per row
+    overscan: 5,
+  });
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
@@ -558,13 +727,29 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
             </div>
             <div className="flex gap-2">
               {currentStep === 'K_Processing' && (
-                <button 
-                  onClick={handleSyncToPModule}
-                  disabled={loading || isCircuitBroken}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-primary-navy rounded-lg font-black text-[10px] uppercase shadow-md hover:bg-slate-50 disabled:opacity-50"
-                >
-                  <ArrowRightLeft size={14} /> Sync to P-Module
-                </button>
+                <>
+                  <button 
+                    onClick={handleProcessKModule}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600/30 text-white border border-blue-400/30 rounded-lg font-black text-[10px] uppercase shadow-md hover:bg-blue-600/50 disabled:opacity-50"
+                  >
+                    <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Retry Processing
+                  </button>
+                  <a
+                    href="/transactions/payroll-exceptions"
+                    target="_blank"
+                    className="flex items-center gap-2 px-4 py-2 bg-rose-600/30 text-white border border-rose-400/30 rounded-lg font-black text-[10px] uppercase shadow-md hover:bg-rose-600/50"
+                  >
+                    <AlertTriangle size={14} /> View Exceptions
+                  </a>
+                  <button 
+                    onClick={handleSyncToPModule}
+                    disabled={loading || isCircuitBroken}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-primary-navy rounded-lg font-black text-[10px] uppercase shadow-md hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <ArrowRightLeft size={14} /> Sync to P-Module
+                  </button>
+                </>
               )}
               {currentStep === 'P_Syncing' && (
                 <>
@@ -634,24 +819,24 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
                </div>
             </div>
             
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[60vh]" ref={parentRef}>
               <table className="w-full text-left border-collapse table-auto min-w-[2500px]">
-                <thead>
+                <thead className="sticky top-0 z-30">
                   <tr className="border-b-2 border-app-border bg-slate-50">
-                    <th className="p-3 text-[10px] font-black text-text-muted uppercase tracking-widest sticky left-0 bg-slate-50 z-20 border-r border-app-border shadow-[1px_0_0_0_#e2e8f0]" style={{ minWidth: '220px' }}>Employee Info</th>
-                    <th className="p-3 text-[10px] font-black text-text-muted uppercase tracking-widest sticky z-20 bg-slate-50 border-r border-app-border shadow-[1px_0_0_0_#e2e8f0]" style={{ left: '220px', minWidth: '140px' }}>Details</th>
+                    <th className="p-3 text-[10px] font-black text-text-muted uppercase tracking-widest sticky left-0 bg-slate-50 z-40 border-r border-app-border shadow-[1px_0_0_0_#e2e8f0]" style={{ minWidth: '220px' }}>Employee Info</th>
+                    <th className="p-3 text-[10px] font-black text-text-muted uppercase tracking-widest sticky z-40 bg-slate-50 border-r border-app-border shadow-[1px_0_0_0_#e2e8f0]" style={{ left: '220px', minWidth: '140px' }}>Details</th>
                     
-                    <th className="p-3 text-[10px] font-black text-blue-700 uppercase tracking-widest bg-blue-50/50 border-r border-app-border min-w-[160px] whitespace-nowrap">
+                    <th className="p-3 text-[10px] font-black text-blue-700 uppercase tracking-widest bg-blue-50/90 backdrop-blur border-r border-app-border min-w-[160px] whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <Zap size={14} className="text-blue-500" />
                         K Logic (Shadow)
                       </div>
                     </th>
                     {kOnlyHeads.map(h => (
-                      <th key={h.id} className="p-3 text-[10px] font-bold text-blue-600 uppercase tracking-widest bg-blue-50/10 min-w-[120px] whitespace-nowrap text-right">{h.name}</th>
+                      <th key={h.id} className="p-3 text-[10px] font-bold text-blue-600 uppercase tracking-widest bg-blue-50/90 backdrop-blur min-w-[120px] whitespace-nowrap text-right">{h.name}</th>
                     ))}
                     
-                    <th className="p-3 text-[10px] font-black text-amber-700 uppercase tracking-widest bg-amber-50/50 border-l border-r border-app-border min-w-[160px] whitespace-nowrap">
+                    <th className="p-3 text-[10px] font-black text-amber-700 uppercase tracking-widest bg-amber-50/90 backdrop-blur border-l border-r border-app-border min-w-[160px] whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <Calculator size={14} className="text-amber-500" />
                         P Logic (Statutory)
@@ -668,7 +853,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
                       </div>
                     </th>
                     {kpHeads.map(h => (
-                      <th key={h.id} className="p-3 text-[10px] font-bold text-amber-700 uppercase tracking-widest bg-amber-50/10 min-w-[120px] whitespace-nowrap text-right">P {h.name}</th>
+                      <th key={h.id} className="p-3 text-[10px] font-bold text-amber-700 uppercase tracking-widest bg-amber-50/90 backdrop-blur min-w-[120px] whitespace-nowrap text-right">P {h.name}</th>
                     ))}
                     
                     <th className="p-4 text-[11px] font-black text-blue-700 uppercase tracking-widest bg-blue-50 text-right border-l border-app-border whitespace-nowrap">Net (Act)</th>
@@ -677,99 +862,27 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
                   </tr>
                 </thead>
                 <tbody>
-                  {gridData.map(item => (
-                    <tr key={item.emp_id} className="border-b border-app-border hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => setSelectedEmployeeSlip(item)}>
-                      <td className="p-3 sticky left-0 bg-white group-hover:bg-slate-50 z-10 border-r border-app-border" style={{ minWidth: '220px' }}>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-[13px] text-primary-navy tracking-tight truncate max-w-[200px]" title={item.name}>{item.name}</span>
-                          <span className="text-[11px] font-mono text-text-muted mt-0.5">{item.emp_code}</span>
-                          <span className="text-[10px] font-semibold text-text-muted uppercase mt-1 truncate max-w-[200px]" title={item.department}>{item.department}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 sticky bg-white group-hover:bg-slate-50 z-10 border-r border-app-border" style={{ left: '220px', minWidth: '140px' }}>
-                        <div className="flex flex-col">
-                          <span className="text-[11px] font-medium text-text-muted uppercase tracking-tighter truncate max-w-[130px]" title={item.category}>{item.category}</span>
-                          <div className="h-[1px] w-full bg-slate-200 my-1.5" />
-                          <span className="text-[11px] font-medium text-text-muted uppercase tracking-tighter truncate max-w-[130px]" title={item.class}>{item.class}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 bg-blue-50/5 border-r border-app-border whitespace-nowrap">
-                        <div className="flex flex-col space-y-1">
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-[11px] text-text-muted uppercase tracking-wider">Atd:</span>
-                            <span className="text-[13px] font-bold text-primary-navy">{item.k_attendance}</span>
-                          </div>
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-[11px] text-text-muted uppercase tracking-wider">Rate:</span>
-                            <span className="text-[13px] font-bold text-blue-600">₹{item.wage_rate?.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between items-center gap-4">
-                            <span className="text-[11px] text-text-muted uppercase tracking-wider">Gross:</span>
-                            <span className="text-[13px] font-bold text-primary-navy">₹{item.k_gross_payable?.toLocaleString()}</span>
-                          </div>
-                        </div>
-                      </td>
-                      {kOnlyHeads.map(h => {
-                         const earnings = safeJsonParse(item.k_other_earnings || '{}');
-                         const deductions = safeJsonParse(item.k_deductions || '{}');
-                         const val = h.type === 'EARNING' ? earnings[h.name] : deductions[h.name];
-                         return (
-                           <td key={h.id} className="p-3 bg-blue-50/5 text-right whitespace-nowrap">
-                             <span className={cn("text-[13px] font-semibold", h.type === 'EARNING' ? "text-primary-navy" : "text-rose-600")}>
-                               {val ? `₹${val.toLocaleString()}` : '-'}
-                             </span>
-                           </td>
-                         );
-                      })}
-                      <td className="p-3 bg-amber-50/5 border-l border-r border-app-border whitespace-nowrap">
-                        {item.p_attendance !== undefined ? (
-                          <div className="flex flex-col space-y-1">
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[11px] text-text-muted uppercase tracking-wider">Atd:</span>
-                              <span className="text-[13px] font-bold text-primary-navy">{item.p_attendance}</span>
-                            </div>
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[11px] text-text-muted uppercase tracking-wider">Rate:</span>
-                              <span className="text-[13px] font-bold text-amber-600">₹{item.statutory_rate?.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center gap-4">
-                              <span className="text-[11px] text-text-muted uppercase tracking-wider">Gross:</span>
-                              <span className="text-[13px] font-bold text-primary-navy">₹{item.p_gross_statutory_payable?.toLocaleString()}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] italic text-text-muted">Sync pending...</span>
-                        )}
-                      </td>
-                      {kpHeads.map(h => {
-                         const pOther = safeJsonParse(item.p_other_earnings_kp || '{}');
-                         const pDeductions = safeJsonParse(item.p_deductions || '{}');
-                         const val = h.type === 'EARNING' ? pOther[h.name] : pDeductions[h.name];
-                         return (
-                           <td key={h.id} className="p-3 bg-amber-50/5 text-right whitespace-nowrap">
-                             <span className={cn("text-[13px] font-semibold", h.type === 'EARNING' ? "text-amber-700" : "text-rose-600")}>
-                               {val ? `₹${val.toLocaleString()}` : '-'}
-                             </span>
-                           </td>
-                         );
-                      })}
-                      <td className="p-4 text-right bg-blue-50/10 border-l border-app-border whitespace-nowrap">
-                        <span className="text-sm font-bold text-blue-700">
-                          ₹{ (item.k_net_payable || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
-                        </span>
-                      </td>
-                      <td className="p-4 text-right bg-emerald-50/30 border-l border-app-border whitespace-nowrap">
-                        <span className="text-sm font-bold text-emerald-700">
-                          ₹{ (item.net_payable_final || item.k_net_payable || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
-                        </span>
-                      </td>
-                      <td className="p-4 text-right bg-rose-50/30 border-l border-app-border whitespace-nowrap">
-                        <span className={cn("text-sm font-black", (item.k_net_payable || 0) - (item.net_payable_final || item.k_net_payable || 0) !== 0 ? 'text-rose-600' : 'text-slate-400')}>
-                          ₹{ ((item.k_net_payable || 0) - (item.net_payable_final || item.k_net_payable || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {rowVirtualizer.getVirtualItems().length > 0 && (
+                    <tr style={{ height: `${rowVirtualizer.getVirtualItems()[0]?.start || 0}px` }} />
+                  )}
+                  {rowVirtualizer.getVirtualItems().map(virtualRow => {
+                    const item = gridData[virtualRow.index];
+                    return (
+                      <EmployeeTableRow 
+                        key={item.emp_id} 
+                        item={item} 
+                        kLogicSource={kLogicSource} 
+                        kOnlyHeads={kOnlyHeads} 
+                        kpHeads={kpHeads} 
+                        setSelectedEmployeeSlip={setSelectedEmployeeSlip} 
+                        virtualRow={virtualRow} 
+                        measureElement={rowVirtualizer.measureElement} 
+                      />
+                    );
+                  })}
+                  {rowVirtualizer.getVirtualItems().length > 0 && (
+                    <tr style={{ height: `${rowVirtualizer.getTotalSize() - (rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1]?.end || 0)}px` }} />
+                  )}
                 </tbody>
               </table>
             </div>
@@ -818,14 +931,29 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-text-muted font-bold">Attendance</p>
-                    <p className="text-xl font-black text-primary-navy">{selectedEmployeeSlip.k_attendance}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-text-muted font-bold">Wage Rate</p>
-                    <p className="text-xl font-black text-blue-600">₹{selectedEmployeeSlip.wage_rate?.toLocaleString()}</p>
-                  </div>
+                  {kLogicSource === 'DAILY_MIS' ? (
+                    <>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-text-muted font-bold">MIS Attendance</p>
+                        <p className="text-xl font-black text-primary-navy">{selectedEmployeeSlip.k_attendance}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-text-muted font-bold">Avg Rate</p>
+                        <p className="text-xl font-black text-blue-600">₹{selectedEmployeeSlip.k_attendance && selectedEmployeeSlip.k_attendance > 0 ? (selectedEmployeeSlip.k_gross_payable / selectedEmployeeSlip.k_attendance).toLocaleString(undefined, {maximumFractionDigits: 2}) : '0'}</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-text-muted font-bold">Attendance</p>
+                        <p className="text-xl font-black text-primary-navy">{selectedEmployeeSlip.k_attendance}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-text-muted font-bold">Wage Rate</p>
+                        <p className="text-xl font-black text-blue-600">₹{selectedEmployeeSlip.wage_rate?.toLocaleString()}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-6">

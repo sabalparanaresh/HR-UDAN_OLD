@@ -50,6 +50,7 @@ export default function BankTransfers() {
   const [configs, setConfigs] = useState<BankConfig[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [narration, setNarration] = useState('');
   const [salaryMonth, setSalaryMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -166,6 +167,7 @@ export default function BankTransfers() {
         exportData,
         excelConfigColumns: config.columns,
         paymentDate,
+        narration,
         currentMode
       });
 
@@ -237,6 +239,17 @@ export default function BankTransfers() {
                   type="date"
                   value={paymentDate}
                   onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-app-border p-2 text-sm focus:outline-none focus:border-primary-navy rounded-md"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] textile-header text-text-muted uppercase font-bold">Narration</label>
+                <input 
+                  type="text"
+                  value={narration}
+                  onChange={(e) => setNarration(e.target.value)}
+                  placeholder="Salary Transfer..."
                   className="w-full bg-slate-50 border border-app-border p-2 text-sm focus:outline-none focus:border-primary-navy rounded-md"
                 />
               </div>

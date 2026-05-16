@@ -11,6 +11,8 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+import PSalaryDetailsGrid from '../../../modules/k/employee-master/components/salary/PSalaryDetailsGrid';
+
 export default function WagesTab() {
   const { 
     form, currentMode, isSuperAdmin, 
@@ -359,6 +361,9 @@ export default function WagesTab() {
                       </div>
                     )}
                   </div>
+                  {currentMode !== 'P' && selectedEmployeeId && (
+                     <PSalaryDetailsGrid employeeId={parseInt(selectedEmployeeId)} />
+                  )}
                 </Tabs.Content>
       
                 {/* Documents & Payment Tab */}

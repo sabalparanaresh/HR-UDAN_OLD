@@ -39,9 +39,9 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // Types
-type ColumnNature = 'Static' | 'Dynamic' | 'Incremental';
+type ColumnNature = 'Static' | 'Dynamic' | 'Incremental' | 'Blank';
 type DataType = 'Text' | 'Amount' | 'Number' | 'Date';
-type DataSource = 'Employee Master' | 'Salary Processed' | 'Loans' | 'Bank A/c Settings';
+type DataSource = 'Employee Master' | 'Salary Processed' | 'Loans' | 'Bank A/c Settings' | 'Bank Transfer';
 
 interface BankColumn {
   id: string;
@@ -66,7 +66,8 @@ const FIELD_OPTIONS: Record<DataSource, string[]> = {
   'Employee Master': ['emp_code', 'first_name', 'middle_name', 'last_name', 'bank_name', 'account_no', 'ifsc_code', 'aadhar_no', 'pan_no'],
   'Salary Processed': ['net_salary', 'gross_salary', 'month', 'working_days', 'basic', 'hra', 'conveyance', 'total_deductions'],
   'Loans': ['loan_amount', 'installment_amount', 'balance_amount'],
-  'Bank A/c Settings': ['CMS_CLIENT_CODE', 'CMS_PRODUCT_CODE', 'PAYMENT_TYPE_IDENTIFIER', 'REFERENCE_START_NO', 'ACCOUNT_NO', 'IFSC_CODE']
+  'Bank A/c Settings': ['CMS_CLIENT_CODE', 'CMS_PRODUCT_CODE', 'PAYMENT_TYPE_IDENTIFIER', 'REFERENCE_START_NO', 'ACCOUNT_NO', 'IFSC_CODE'],
+  'Bank Transfer': ['Payment Date', 'Employee Name', 'Bank A/c Number of Employee', 'Bank IFSC code of Employee', 'Employee Phone number', 'Employee Email', 'Narration']
 };
 
 interface SortableColumnRowProps {
@@ -128,6 +129,7 @@ function SortableColumnRow({
             <option value="Static">Static</option>
             <option value="Dynamic">Dynamic</option>
             <option value="Incremental">Incremental</option>
+            <option value="Blank">Blank</option>
           </select>
         </div>
 
@@ -160,6 +162,7 @@ function SortableColumnRow({
                 <option value="Salary Processed">Salary Processed</option>
                 <option value="Loans">Loans</option>
                 <option value="Bank A/c Settings">Bank A/c Settings</option>
+                <option value="Bank Transfer">Bank Transfer</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -194,6 +197,15 @@ function SortableColumnRow({
             <label className="text-[10px] textile-header text-text-muted uppercase font-bold">Incremental Info</label>
             <div className="p-2 text-xs text-text-muted italic bg-slate-50 border border-app-border rounded-md">
               Auto-incrementing sequence (1, 2, 3...)
+            </div>
+          </div>
+        )}
+
+        {column.nature === 'Blank' && (
+          <div className="space-y-1 md:col-span-2">
+            <label className="text-[10px] textile-header text-text-muted uppercase font-bold">Blank Column</label>
+            <div className="p-2 text-xs text-text-muted italic bg-slate-50 border border-app-border rounded-md">
+              Column will be empty in export.
             </div>
           </div>
         )}

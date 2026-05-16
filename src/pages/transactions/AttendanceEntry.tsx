@@ -394,9 +394,9 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
           {currentMode === 'P' && (
             <button 
               onClick={() => setIsGhostModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-all shadow-md"
+              className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-bold hover:bg-rose-700 transition-all shadow-md"
             >
-              <Fingerprint size={16} /> Ghost Punches
+              <Fingerprint size={16} /> Ghost Punch Resolver
             </button>
           )}
           <button 
@@ -862,21 +862,21 @@ const GhostPunchesModal: React.FC<GhostPunchesModalProps> = ({
 }) => {
   const [monthYear, setMonthYear] = useState(initialMonth);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [anomalyStats, setAnomalyStats] = useState<any>(null);
 
   if (!isOpen) return null;
 
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
-      await invoke('generate_ghost_punches', {
-        monthYear,
-        filters
+      const stats = await invoke<any>('resolve_attendance_anomalies', {
+        monthYear
       });
-      toast.success("Statutory Ghost Punches generated successfully!");
+      setAnomalyStats(stats);
+      toast.success("Attendance anomalies resolved and quarantined successfully!");
       onComplete();
-      onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate ghost punches");
+      toast.error(err instanceof Error ? err.message : "Failed to resolve anomalies");
     } finally {
       setIsGenerating(false);
     }
@@ -889,25 +889,25 @@ const GhostPunchesModal: React.FC<GhostPunchesModalProps> = ({
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-app-border"
       >
-        <div className="p-6 border-b border-app-border bg-emerald-50 flex justify-between items-center text-emerald-900">
+        <div className="p-6 border-b border-app-border bg-rose-50 flex justify-between items-center text-rose-900">
           <div className="flex items-center gap-2">
             <Fingerprint size={20} />
-            <h3 className="font-black uppercase tracking-tight text-sm text-emerald-900">Statutory Ghost Generator</h3>
+            <h3 className="font-black uppercase tracking-tight text-sm text-rose-900">Audit Ghost Punch Resolver</h3>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-emerald-100 rounded-full transition-colors">
-            <X size={20} className="text-emerald-800" />
+          <button onClick={onClose} className="p-2 hover:bg-rose-100 rounded-full transition-colors">
+            <X size={20} className="text-rose-800" />
           </button>
         </div>
 
         <div className="p-6 space-y-6">
-          <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl flex gap-3">
-            <ShieldAlert className="text-emerald-600 shrink-0" size={18} />
+          <div className="bg-rose-50 border border-rose-100 p-4 rounded-xl flex gap-3">
+            <ShieldAlert className="text-rose-600 shrink-0" size={18} />
             <div className="space-y-1">
-              <p className="text-[10px] text-emerald-800 leading-relaxed font-black uppercase tracking-tight">
-                COMPLIANCE AUTOMATION
+              <p className="text-[10px] text-rose-800 leading-relaxed font-black uppercase tracking-tight">
+                ANOMALY RESOLUTION
               </p>
-              <p className="text-[10px] text-emerald-700/80 leading-relaxed font-bold">
-                This tool fills gaps in attendance for statutory compliance. It respects holidays and weekly offs, generating punches that satisfy a 1.0 attendance value for all remaining days in the month.
+              <p className="text-[10px] text-rose-700/80 leading-relaxed font-bold">
+                This tool eliminates bad punches generated during audit mode. Rules applied: remove duplicate punches, remove orphan OUT punches, detect &gt;16hr shifts, detect overlapping shifts. Bad data will be quarantined.
               </p>
             </div>
           </div>
@@ -921,9 +921,22 @@ const GhostPunchesModal: React.FC<GhostPunchesModalProps> = ({
               placeholder="04-2026"
               value={monthYear}
               onChange={e => setMonthYear(e.target.value)}
-              className="w-full bg-slate-50 border border-app-border p-2.5 text-xs rounded-lg outline-none focus:border-emerald-500 transition-all font-mono"
+              className="w-full bg-slate-50 border border-app-border p-2.5 text-xs rounded-lg outline-none focus:border-rose-500 transition-all font-mono"
             />
           </div>
+
+          {anomalyStats && (
+            <div className="bg-slate-50 p-4 border border-app-border rounded flex gap-4 justify-between">
+               <div className="text-center w-full">
+                  <div className="text-xl font-bold text-primary-navy">{anomalyStats.anomalies_found}</div>
+                  <div className="text-[10px] font-bold text-text-muted uppercase">Anomalies Found</div>
+               </div>
+               <div className="text-center w-full">
+                  <div className="text-xl font-bold text-primary-green">{anomalyStats.anomalies_fixed}</div>
+                  <div className="text-[10px] font-bold text-text-muted uppercase">Auto-Resolved</div>
+               </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-4 border-t border-app-border">
             <button 
@@ -935,10 +948,10 @@ const GhostPunchesModal: React.FC<GhostPunchesModalProps> = ({
             <button 
               onClick={handleGenerate}
               disabled={isGenerating}
-              className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+              className="px-6 py-2 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
             >
               {isGenerating && <Loader2 size={14} className="animate-spin" />}
-              Generate Punches
+              Resolve Anomalies
             </button>
           </div>
         </div>

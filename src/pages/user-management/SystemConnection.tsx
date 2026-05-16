@@ -5,7 +5,8 @@ import {
   ShieldCheck, 
   Loader2,
   Database,
-  RefreshCw
+  RefreshCw,
+  Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { clsx, type ClassValue } from 'clsx';
@@ -25,6 +26,10 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('CONNECTED');
   const [isToggling, setIsToggling] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [reconcileModalOpen, setReconcileModalOpen] = useState(false);
+  const [reconcileData, setReconcileData] = useState<any>(null);
+  const [resolution, setResolution] = useState<'KEEP_K' | 'KEEP_P' | 'DUAL_LEDGER'>('DUAL_LEDGER');
 
   useEffect(() => {
     fetchConnectionStatus();
@@ -35,6 +40,8 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
     try {
       const status = await invoke<'CONNECTED' | 'DISCONNECTED'>('get_connection_status');
       setConnectionStatus(status);
+      const logs = await invoke<any[]>('get_reconnect_audit_logs');
+      setAuditLogs(logs || []);
     } catch (err) {
       console.error("Failed to fetch connection status", err);
     } finally {
@@ -42,26 +49,66 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
     }
   };
 
-  const toggleConnection = async () => {
-    const newStatus = connectionStatus === 'CONNECTED' ? 'DISCONNECTED' : 'CONNECTED';
+  const handleDisconnect = async () => {
     setIsToggling(true);
     try {
-      await invoke('update_connection_status', { status: newStatus });
-      setConnectionStatus(newStatus);
-      toast.success(`System ${newStatus}`, {
-        description: newStatus === 'DISCONNECTED' ? 'Primary data module is now hidden.' : 'All modules are now accessible.',
-        className: 'bg-card-bg border-primary-navy text-text-main'
+      await invoke('update_connection_status', { status: 'DISCONNECTED' });
+      setConnectionStatus('DISCONNECTED');
+      const logs = await invoke<any[]>('get_reconnect_audit_logs');
+      setAuditLogs(logs || []);
+      toast.success(`System ISOLATED`, {
+        description: 'Module P is now acting via Isolation Circuit Breaker.',
+        className: 'bg-amber-100 border-amber-500 text-amber-800'
       });
-    } catch (err) {
-      toast.error("Failed to update connection status");
+    } catch (e: any) {
+      toast.error('Disconnect failed', { description: e.message });
     } finally {
       setIsToggling(false);
     }
   };
 
+  const initiateReconnect = async () => {
+    setIsToggling(true);
+    try {
+      const report = await invoke<any>('reconcile_k_p');
+      setReconcileData(report);
+      setReconcileModalOpen(true);
+    } catch (e: any) {
+      toast.error('Reconciliation failed', { description: e.message });
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  const finalizeReconnect = async () => {
+    setIsToggling(true);
+    try {
+      await invoke('resolve_reconnect', { resolution });
+      setConnectionStatus('CONNECTED');
+      const logs = await invoke<any[]>('get_reconnect_audit_logs');
+      setAuditLogs(logs || []);
+      toast.success('Sync Engine Reconnected', {
+        className: 'bg-green-100 border-green-500 text-green-800'
+      });
+      setReconcileModalOpen(false);
+    } catch(e: any) {
+       toast.error('Reconnect failed', { description: e.message });
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  const toggleConnection = async () => {
+    if (connectionStatus === 'CONNECTED') {
+       await handleDisconnect();
+    } else {
+       await initiateReconnect();
+    }
+  };
+
   const isSuperAdmin = currentUser?.role === 'SUPERADMIN';
 
-  if (!isSuperAdmin && !([]).find(p => p.page === 'Payroll')?.can_process_blacklist) {
+  if (!isSuperAdmin && !([] as any[]).find(p => p.page === 'Payroll')?.can_process_blacklist) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
         <ShieldCheck className="text-primary-red w-16 h-16 opacity-20" />
@@ -80,7 +127,7 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
             System Connection Control
           </h2>
           <p className="text-sm font-mono text-primary-navy uppercase tracking-widest">
-            GLOBAL ACCESS CONTROL // DATABASE_LINK_STATUS
+            GLOBAL ACCESS CONTROL // ISOLATION CIRCUIT BREAKER
           </p>
         </div>
         <button 
@@ -96,7 +143,7 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
       <div className="textile-card p-8 border-2 border-dashed border-app-border bg-white flex flex-col items-center text-center space-y-8 shadow-xl">
         <div className={cn(
           "w-32 h-32 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 transform hover:scale-105",
-          connectionStatus === 'CONNECTED' ? "bg-primary-green text-white" : "bg-primary-red text-white"
+          connectionStatus === 'CONNECTED' ? "bg-primary-green text-white" : "bg-amber-600 text-white"
         )}>
           {connectionStatus === 'CONNECTED' ? <Zap size={64} /> : <ZapOff size={64} />}
         </div>
@@ -106,16 +153,16 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
             <span className="text-[10px] font-mono text-text-muted uppercase tracking-[0.2em]">Current Status</span>
             <h4 className={cn(
               "text-4xl font-black textile-header uppercase tracking-tighter",
-              connectionStatus === 'CONNECTED' ? "text-primary-green" : "text-primary-red"
+              connectionStatus === 'CONNECTED' ? "text-primary-green" : "text-amber-600"
             )}>
-              {connectionStatus}
+              {connectionStatus === 'CONNECTED' ? 'CONNECTED' : 'DISCONNECTED / AUDIT MODE'}
             </h4>
           </div>
           
           <p className="text-sm text-text-muted max-w-lg mx-auto leading-relaxed">
             {connectionStatus === 'CONNECTED' 
-              ? "The system is currently connected to the primary database. All modules and sensitive data are accessible to authorized personnel."
-              : "The system is currently disconnected. Primary data is hidden, and only statutory modules are accessible."}
+              ? "The system is connected. Data synchronisation between Primary and Statutory modules is active."
+              : "ISOLATION ACTIVE: K Sync API blocked. Statutory module is operating independently with standalone inputs enabled."}
           </p>
         </div>
 
@@ -125,38 +172,113 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
             disabled={isToggling}
             className={cn(
               "w-full app-btn px-8 py-4 textile-header text-lg font-bold shadow-xl transition-all flex items-center justify-center gap-3",
-              connectionStatus === 'CONNECTED' ? "bg-primary-red hover:bg-red-700 text-white" : "bg-primary-green hover:bg-green-700 text-white",
+              connectionStatus === 'CONNECTED' ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-primary-green hover:bg-green-700 text-white",
               isToggling && "opacity-50 cursor-not-allowed"
             )}
           >
             {isToggling ? <Loader2 className="animate-spin" size={24} /> : (connectionStatus === 'CONNECTED' ? <ZapOff size={24} /> : <Zap size={24} />)}
-            {connectionStatus === 'CONNECTED' ? 'DISCONNECT PRIMARY DATA' : 'CONNECT PRIMARY DATA'}
+            {connectionStatus === 'CONNECTED' ? 'DISCONNECT & ISOLATE (AUDIT)' : 'RECONNECT SYNC ENGINE'}
           </button>
+        </div>
+      </div>
 
-          <div className="flex items-center justify-center gap-2 text-[10px] font-mono text-primary-red uppercase bg-primary-red/5 px-4 py-3 border border-primary-red/20 rounded-md">
-            <ShieldCheck size={14} />
-            Critical Action: This will affect system-wide module availability
+      <div className="textile-card mt-6">
+        <div className="p-4 border-b border-app-border flex items-center justify-between bg-slate-50">
+          <h3 className="font-bold text-primary-navy textile-header uppercase text-sm flex items-center gap-2">
+            <Activity size={18} /> Reconnect Audit Logs
+          </h3>
+        </div>
+        <div className="overflow-x-auto max-h-64 overflow-y-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="text-[10px] uppercase font-mono text-text-muted bg-slate-50 sticky top-0">
+              <tr>
+                <th className="px-6 py-3">Timestamp</th>
+                <th className="px-6 py-3">Action</th>
+                <th className="px-6 py-3">Performed By</th>
+                <th className="px-6 py-3">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditLogs.map((log: any) => (
+                <tr key={log.id} className="border-b last:border-0 border-app-border hover:bg-slate-50/50">
+                  <td className="px-6 py-3 font-mono text-xs">{new Date(log.timestamp).toLocaleString()}</td>
+                  <td className="px-6 py-3">
+                    <span className={cn(
+                      "px-2 py-1 rounded inline-block text-[10px] font-bold uppercase",
+                      log.action === 'CONNECTED' ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
+                    )}>
+                      {log.action}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3">{log.performed_by_user || 'System'}</td>
+                  <td className="px-6 py-3 text-text-muted">{log.reason || '-'}</td>
+                </tr>
+              ))}
+              {auditLogs.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-text-muted">No audit logs found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {reconcileModalOpen && reconcileData && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-app-border w-full max-w-lg overflow-hidden flex flex-col">
+            <div className="p-6 bg-slate-50 border-b border-app-border">
+              <h2 className="text-xl font-black text-primary-navy textile-header uppercase">Sync Reconciliation</h2>
+              <p className="text-sm text-text-muted mt-1">Review disconnected operations since {new Date(reconcileData.audit_start_time).toLocaleString()}</p>
+            </div>
+            
+            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+              <div className="flex gap-4 items-center justify-between bg-primary-navy/5 p-4 rounded-lg">
+                <div className="text-center">
+                  <div className="text-2xl font-black text-primary-blue">{reconcileData.k_records}</div>
+                  <div className="text-[10px] tracking-wider uppercase font-bold text-text-muted">K Module Records</div>
+                </div>
+                <div className="text-primary-navy font-bold text-lg">VS</div>
+                <div className="text-center">
+                  <div className="text-2xl font-black text-primary-red">{reconcileData.p_records}</div>
+                  <div className="text-[10px] tracking-wider uppercase font-bold text-text-muted">P Module Records</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-bold uppercase tracking-wider text-primary-navy">Select Resolution Policy</label>
+                <select 
+                  className="w-full text-sm p-3 border border-app-border rounded focus:border-primary-blue focus:ring-1 focus:ring-primary-blue bg-white"
+                  value={resolution}
+                  onChange={(e) => setResolution(e.target.value as any)}
+                >
+                  <option value="DUAL_LEDGER">DUAL_LEDGER - Maintain independent history (Recommended)</option>
+                  <option value="KEEP_K">KEEP_K - Overwrite P's audit period with K data</option>
+                  <option value="KEEP_P">KEEP_P - Merge P's standalone transactions back into K</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-app-border bg-slate-50 flex justify-end gap-3">
+              <button 
+                onClick={() => setReconcileModalOpen(false)}
+                className="px-6 py-2 border border-app-border rounded text-sm font-bold text-text-main hover:bg-slate-100 transition-colors"
+                disabled={isToggling}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={finalizeReconnect}
+                disabled={isToggling}
+                className="px-6 py-2 bg-primary-green hover:bg-green-700 text-white rounded text-sm font-bold shadow transition-colors flex items-center gap-2"
+              >
+                {isToggling && <Loader2 className="w-4 h-4 animate-spin" />}
+                Confirm Reconnect
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="textile-card p-6 bg-slate-50 border-app-border space-y-3">
-          <Database className="text-primary-navy" size={24} />
-          <h5 className="font-bold text-primary-navy textile-header uppercase text-xs">Data Integrity</h5>
-          <p className="text-[11px] text-text-muted">Ensures that all transactions are synchronized with the central mill server.</p>
-        </div>
-        <div className="textile-card p-6 bg-slate-50 border-app-border space-y-3">
-          <ShieldCheck className="text-primary-navy" size={24} />
-          <h5 className="font-bold text-primary-navy textile-header uppercase text-xs">Access Control</h5>
-          <p className="text-[11px] text-text-muted">Only users with Blacklist Processing permission can toggle this connection to prevent unauthorized data exposure.</p>
-        </div>
-        <div className="textile-card p-6 bg-slate-50 border-app-border space-y-3">
-          <RefreshCw className="text-primary-navy" size={24} />
-          <h5 className="font-bold text-primary-navy textile-header uppercase text-xs">Real-Time Sync</h5>
-          <p className="text-[11px] text-text-muted">Connection status is monitored in real-time across all active user sessions.</p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

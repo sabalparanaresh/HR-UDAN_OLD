@@ -7,6 +7,7 @@ export interface BankExcelGenerationParams {
   exportData: any[];
   excelConfigColumns: any[];
   paymentDate: string;
+  narration?: string;
   currentMode: string;
 }
 
@@ -15,6 +16,7 @@ export async function processBankTransaction({
   exportData,
   excelConfigColumns,
   paymentDate,
+  narration,
   currentMode
 }: BankExcelGenerationParams) {
   
@@ -42,6 +44,8 @@ export async function processBankTransaction({
         value = index + 1;
       } else if (col.nature === 'Static') {
         value = col.staticValue || '';
+      } else if (col.nature === 'Blank') {
+        value = '';
       } else if (col.nature === 'Dynamic') {
         if (col.dataSource === 'Bank A/c Settings') {
           value = resolveTemplateVariable({
@@ -50,6 +54,14 @@ export async function processBankTransaction({
             employeeBankName: empBankName,
             referenceNumberStr: refNo
           });
+        } else if (col.dataSource === 'Bank Transfer') {
+          if (col.field === 'Payment Date') value = paymentDate;
+          else if (col.field === 'Employee Name') value = record.as_per_bank_name || record.first_name || '';
+          else if (col.field === 'Bank A/c Number of Employee') value = record.account_no || '';
+          else if (col.field === 'Bank IFSC code of Employee') value = record.ifsc_code || '';
+          else if (col.field === 'Employee Phone number') value = record.phone || '';
+          else if (col.field === 'Employee Email') value = record.email || '';
+          else if (col.field === 'Narration') value = narration || '';
         } else {
           value = record[col.field || ''] || '';
         }
