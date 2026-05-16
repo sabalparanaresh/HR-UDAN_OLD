@@ -210,8 +210,9 @@ PF Deduction:
   - Real-time raw data ONLY sync from K to P (no processed calculations are synced). 
   - K Module inserts UPSERT/DELETE actions into `employee_sync_queue` and `sync_queue`. The Sync Engine processes these into `statutory.db` (P).
   - Includes checksum validation (`/api/sync/checksum`) to ensure K and P table parity for critical masters.
+- **Workspace Switcher (Alt+Shift+K)**: Lightweight global UI switcher between K and P modules managed by a Zustand store (`src/store/workspaceStore.ts`). This is a **UI switch only**. It does NOT disconnect the backend bridge, nor interrupt the real-time sync process. It preserves the last active route per module and ensures completely separate view contexts.
 - **Audit Mode (K Disconnected)**: 
-  - Toggled globally via `Alt+Shift+K` or the UI Toggle.
+  - Toggled via the UI Toggle (No longer toggled via Alt+Shift+K).
   - When disconnected, K and P sever the automated bridge. P Module operates entirely standalone using its cached data. 
   - `report_snapshots` in K-module retains a snapshot of P-module data. If K runs a P-dependent report while disconnected, it uses this snapshot and displays a Timestamped Cache Warning Banner.
 
