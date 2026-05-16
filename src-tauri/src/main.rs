@@ -1343,6 +1343,57 @@ pub async fn generate_salary_register_excel(
     }))
 }
 
+// Payroll commands
+pub mod payroll;
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct PayrollRules {
+    k_salary_calculation_source: String,
+}
+
+#[tauri::command]
+pub async fn get_payroll_rules() -> Result<Value, String> {
+    let conn = Connection::open("primary.db")
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+        
+    let row = conn.query_row(
+        "SELECT k_salary_calculation_source FROM company_payroll_rules WHERE id = 1",
+        [],
+        |row| {
+            Ok(json!({
+                "k_salary_calculation_source": row.get::<_, String>(0).unwrap_or("EMPLOYEE_MASTER".to_string())
+            }))
+        }
+    );
+
+    match row {
+        Ok(data) => Ok(data),
+        Err(_) => Ok(json!({ "k_salary_calculation_source": "EMPLOYEE_MASTER" }))
+    }
+}
+
+#[tauri::command]
+pub async fn update_payroll_rules(rules: Value) -> Result<Value, String> {
+    let mut conn = Connection::open("primary.db")
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+        
+    let source = rules
+        .get("k_salary_calculation_source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("EMPLOYEE_MASTER");
+
+    conn.execute(
+        "INSERT INTO company_payroll_rules (id, k_salary_calculation_source, updated_at) 
+         VALUES (1, ?, CURRENT_TIMESTAMP) 
+         ON CONFLICT(id) DO UPDATE SET 
+         k_salary_calculation_source = excluded.k_salary_calculation_source,
+         updated_at = excluded.updated_at",
+        [source],
+    ).map_err(|e| format!("Database error: {}", e))?;
+
+    Ok(json!({ "status": "success" }))
+}
+
 mod scheduler;
 
 fn main() {
@@ -1354,7 +1405,7 @@ fn main() {
             scheduler::start_background_scheduler(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![bulk_bank_import, bulk_generate_attendance, bulk_employee_upsert, save_transaction_entry, get_earning_history, execute_report_query, generate_enterprise_excel, generate_salary_register_excel])
+        .invoke_handler(tauri::generate_handler![bulk_bank_import, bulk_generate_attendance, bulk_employee_upsert, save_transaction_entry, get_earning_history, execute_report_query, generate_enterprise_excel, generate_salary_register_excel, get_payroll_rules, update_payroll_rules, payroll::calculate_k_module_wages_rust])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

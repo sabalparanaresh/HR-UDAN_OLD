@@ -322,9 +322,31 @@ export const getPaginatedSalaryResults: CommandHandler = (ctx, args) => {
   res.json({ data: parsedPaginated, total: filtered.length });
 };
 
+export const getPayrollExceptions: CommandHandler = (ctx, args) => {
+  const { primaryDb, res } = ctx;
+  const { month } = args;
+  
+  const sql = `
+    SELECT pe.*, e.name as employee_name, e.emp_code 
+    FROM payroll_exceptions pe
+    JOIN employees e ON pe.employee_id = e.id
+    ${month ? 'WHERE pe.salary_month = ?' : ''}
+    ORDER BY created_at DESC
+  `;
+  
+  const data = month ? primaryDb.prepare(sql).all(month) : primaryDb.prepare(sql).all();
+  res.json(data);
+};
+
 export const calculateKModuleWages: CommandHandler = (ctx, args) => {
   const { primaryDb, statutoryDb, res } = ctx;
   const { month, filters } = args;
+
+  const startTime = Date.now();
+
+  try {
+    primaryDb.prepare('DELETE FROM payroll_exceptions WHERE salary_month = ?').run(month);
+  } catch(e) {}
 
   const minWageRow = statutoryDb.prepare("SELECT config, effective_date FROM statutory_settings WHERE type = 'MIN_WAGE' ORDER BY effective_date DESC LIMIT 1").get() as any;
   let hasValidMinWage = false;
@@ -355,6 +377,10 @@ export const calculateKModuleWages: CommandHandler = (ctx, args) => {
   if (!companyConfig || !companyConfig.payroll_adjustment_head) {
     return res.status(400).json({ error: "Payroll Adjustment head is not defined in Company Setting->Payroll Rule" });
   }
+
+  // 1. Fetch Company Payroll Rule
+  const payrollRuleRow = primaryDb.prepare('SELECT k_salary_calculation_source FROM company_payroll_rules WHERE id = 1').get() as any;
+  const kEngineSource = payrollRuleRow?.k_salary_calculation_source || 'EMPLOYEE_MASTER';
 
   let sql = `
     SELECT e.*, d.name as department_name, des.name as designation_name,
@@ -452,12 +478,28 @@ export const calculateKModuleWages: CommandHandler = (ctx, args) => {
      loansMap.set(l.emp_id, (loansMap.get(l.emp_id) || 0) + l.planned_amount);
   });
 
+  // 5. Daily MIS Data
+  const misMap = new Map();
+  if (kEngineSource === 'DAILY_MIS') {
+    const misLogs = primaryDb.prepare(`
+      SELECT emp_id, 
+             SUM(attendance_qty * worked_rate) as total_gross_wage, 
+             SUM(attendance_qty) as total_attendance,
+             SUM(CASE WHEN worked_rate = 0 THEN 1 ELSE 0 END) as zero_rate_count,
+             SUM(CASE WHEN attendance_qty < 0 THEN 1 ELSE 0 END) as negative_attendance_count,
+             COUNT(date) as entry_count,
+             COUNT(DISTINCT date) as distinct_date_count
+      FROM daily_mis_entries
+      WHERE date LIKE ? AND emp_id IN (${placeholders})
+      GROUP BY emp_id
+    `).all(`${month}%`, ...empIds) as any[];
+    misLogs.forEach(m => misMap.set(m.emp_id, m));
+  }
+
+  const queryEndTime = Date.now();
+  const queryTime = queryEndTime - startTime;
+
   const results = employees.map(emp => {
-    // Note: getEffectiveRate might still do 1 query internally, but ideally this is fast or should be batched too
-    const rate = PayrollEngine.getEffectiveRate(primaryDb, emp.id, month, 'K');
-
-    const presentDays = attendanceMap.get(emp.id) || 0;
-
     let divisor = 30;
     let workingDayConfigStr = 'DEFAULT (30)';
     if (emp.working_day_type_id) {
@@ -470,12 +512,64 @@ export const calculateKModuleWages: CommandHandler = (ctx, args) => {
     }
 
     let kGrossWage = 0;
-    if (emp.wage_type === 'Daily') {
-      kGrossWage = rate * presentDays;
-    } else if (emp.wage_type === 'Monthly') {
-      kGrossWage = (rate / divisor) * presentDays;
+    let presentDays = 0;
+    let exception = null;
+    let rate = 0; // Derived later if needed
+
+    if (kEngineSource === 'DAILY_MIS') {
+      const misData = misMap.get(emp.id);
+      if (!misData) {
+        exception = 'Missing MIS rows';
+        try {
+          primaryDb.prepare('INSERT INTO payroll_exceptions (employee_id, salary_month, exception_type, message) VALUES (?, ?, ?, ?)').run(
+            emp.id, month, 'MISSING_MIS', 'No Daily MIS entries found for this month'
+          );
+        } catch(e) {}
+      } else if (misData.total_attendance === 0) {
+        exception = 'Zero total attendance';
+        try {
+          primaryDb.prepare('INSERT INTO payroll_exceptions (employee_id, salary_month, exception_type, message) VALUES (?, ?, ?, ?)').run(
+            emp.id, month, 'ZERO_ATTENDANCE', 'Total attendance is 0 for this month'
+          );
+        } catch(e) {}
+      } else {
+        if (misData.zero_rate_count > 0) {
+          exception = 'Zero worked rate';
+          try {
+            primaryDb.prepare('INSERT INTO payroll_exceptions (employee_id, salary_month, exception_type, message) VALUES (?, ?, ?, ?)').run(
+              emp.id, month, 'ZERO_RATE', `Found ${misData.zero_rate_count} entries with 0 worked rate`
+            );
+          } catch(e) {}
+        }
+        if (misData.negative_attendance_count > 0) {
+          exception = exception || 'Negative attendance';
+          try {
+            primaryDb.prepare('INSERT INTO payroll_exceptions (employee_id, salary_month, exception_type, message) VALUES (?, ?, ?, ?)').run(
+              emp.id, month, 'NEGATIVE_ATTENDANCE', `Found ${misData.negative_attendance_count} entries with negative attendance`
+            );
+          } catch(e) {}
+        }
+        if (misData.entry_count > misData.distinct_date_count) {
+          exception = exception || 'Duplicate MIS entries';
+          try {
+            primaryDb.prepare('INSERT INTO payroll_exceptions (employee_id, salary_month, exception_type, message) VALUES (?, ?, ?, ?)').run(
+              emp.id, month, 'DUPLICATE_DATES', `Found duplicate date entries: ${misData.entry_count} entries for ${misData.distinct_date_count} dates`
+            );
+          } catch(e) {}
+        }
+        kGrossWage = misData.total_gross_wage;
+        presentDays = misData.total_attendance || 0;
+      }
     } else {
-      kGrossWage = rate;
+      rate = PayrollEngine.getEffectiveRate(primaryDb, emp.id, month, 'K');
+      presentDays = attendanceMap.get(emp.id) || 0;
+      if (emp.wage_type === 'Daily') {
+        kGrossWage = rate * presentDays;
+      } else if (emp.wage_type === 'Monthly') {
+        kGrossWage = (rate / divisor) * presentDays;
+      } else {
+        kGrossWage = rate;
+      }
     }
 
     const kEarnings = earningsMap.get(emp.id) || [];
@@ -529,12 +623,28 @@ export const calculateKModuleWages: CommandHandler = (ctx, args) => {
       payment_mode: emp.payment_mode,
       ifsc: emp.ifsc_code,
       bank_name: emp.bank_name,
-      account_no: emp.account_no
+      account_no: emp.account_no,
+      exception: exception
     };
   });
 
+  const processingTime = Date.now() - queryEndTime;
+  const totalTime = Date.now() - startTime;
+  
+  console.log(`[Salary Processing] processed ${employees.length} employees using engine '${kEngineSource}'.`);
+  console.log(`[Benchmark] query_time: ${queryTime}ms, processing_time: ${processingTime}ms, total_time: ${totalTime}ms`);
+
   salaryProcessingCache.set(`${month}-K`, results);
-  res.json(results);
+  res.json({
+    employees: results,
+    meta: {
+      active_salary_engine: kEngineSource,
+      query_time_ms: queryTime,
+      processing_time_ms: processingTime,
+      total_time_ms: totalTime,
+      employee_count: employees.length
+    }
+  });
 };
 
 export const calculatePModuleStatutory: CommandHandler = (ctx, args) => {
@@ -720,12 +830,13 @@ export const consolidateFinalPayroll: CommandHandler = (ctx, args) => {
           month_year, working_day_type, wage_type, wage_rate, working_days, k_attendance, k_gross_wage, k_other_earnings,
           k_gross_payable, k_deductions, k_net_payable, statutory_rate, head_wise_rates, p_working_days, p_attendance, 
           p_gross_wage, p_ctc_heads, p_other_earnings_kp, p_gross_statutory_payable, p_deductions, net_payable_final,
-          payment_mode, ifsc, bank_name, account_no
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          payment_mode, ifsc, bank_name, account_no, salary_source_engine
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (const r of results) {
         const kOtherEarnings = JSON.parse(r.k_other_earnings || '{}');
+
         const kDeductionsRaw = JSON.parse(r.k_deductions || '{}');
         
         const kpEarningsHeads = primaryDb.prepare("SELECT name FROM salary_heads WHERE allocation_type = 'KP' AND type = 'EARNING' AND status = 1").all() as any[];
@@ -760,7 +871,8 @@ export const consolidateFinalPayroll: CommandHandler = (ctx, args) => {
           r.month_year, r.working_day_type, r.wage_type, r.wage_rate, r.working_days, r.k_attendance, r.k_gross_wage, r.k_other_earnings,
           r.k_gross_payable, r.k_deductions, r.k_net_payable, r.statutory_rate, r.head_wise_rates || '{}', r.p_working_days, r.p_attendance,
           r.p_gross_wage, r.p_ctc_heads || '{}', JSON.stringify(pOtherEarningsKP), pGrossStatutoryPayable, JSON.stringify(pDeductionsMap), netPayableFinal,
-          r.payment_mode, r.ifsc, r.bank_name, r.account_no
+          r.payment_mode, r.ifsc, r.bank_name, r.account_no,
+          r.salary_source_engine || 'EMPLOYEE_MASTER'
         );
       }
     })();
@@ -1168,8 +1280,8 @@ export const processPayroll: CommandHandler = (ctx, args) => {
                   INSERT INTO final_payroll (
                      emp_code, name, category, class, location, division, group_name, department, designation, reporting_name,
                      month_year, working_day_type, wage_type, wage_rate, working_days, k_attendance, k_gross_wage, k_other_earnings,
-                     k_gross_payable, k_deductions, k_net_payable, payment_mode, ifsc, bank_name, account_no
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     k_gross_payable, k_deductions, k_net_payable, payment_mode, ifsc, bank_name, account_no, salary_source_engine
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
 
                 const pStmt = statutoryDb.prepare(`
@@ -1177,8 +1289,8 @@ export const processPayroll: CommandHandler = (ctx, args) => {
                      emp_code, name, category, class, location, division, group_name, department, designation, reporting_name,
                      month_year, statutory_rate, head_wise_rates, p_working_days, p_attendance, 
                      p_gross_wage, p_ctc_heads, p_other_earnings_kp, p_gross_statutory_payable, p_deductions, net_payable_final,
-                     payment_mode, ifsc, bank_name, account_no
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     payment_mode, ifsc, bank_name, account_no, salary_source_engine
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
 
                 for (const r of mergedResults) {
@@ -1186,7 +1298,8 @@ export const processPayroll: CommandHandler = (ctx, args) => {
                   kStmt.run(
                     r.emp_code, r.name, r.category, r.class, r.location, r.division, r.group_name, r.department, r.designation, r.reporting_name,
                     r.month_year, r.working_day_type, r.wage_type, r.wage_rate, r.working_days, r.k_attendance, r.k_gross_wage, r.k_other_earnings,
-                    r.k_gross_payable, r.k_deductions, r.k_net_payable, r.payment_mode, r.ifsc, r.bank_name, r.account_no
+                    r.k_gross_payable, r.k_deductions, r.k_net_payable, r.payment_mode, r.ifsc, r.bank_name, r.account_no,
+                    r.salary_source_engine || 'EMPLOYEE_MASTER'
                   );
                   
                   // Insert P module data into statutoryDb (for Audit Mode independence)
@@ -1194,7 +1307,8 @@ export const processPayroll: CommandHandler = (ctx, args) => {
                     r.emp_code, r.name, r.category, r.class, r.location, r.division, r.group_name, r.department, r.designation, r.reporting_name,
                     r.month_year, r.statutory_rate, r.head_wise_rates || '{}', r.p_working_days, r.p_attendance,
                     r.p_gross_wage, r.p_ctc_heads || '{}', r.p_other_earnings_kp || '{}', r.p_gross_statutory_payable, r.p_deductions, r.net_payable_final,
-                    r.payment_mode, r.ifsc, r.bank_name, r.account_no
+                    r.payment_mode, r.ifsc, r.bank_name, r.account_no,
+                    r.salary_source_engine || 'EMPLOYEE_MASTER'
                   );
                 }
 

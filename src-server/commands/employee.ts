@@ -88,6 +88,55 @@ export const syncEmployeeToPakka: CommandHandler = (ctx, args) => {
   }
 };
 
+export const getPSalaryDetailsForK: CommandHandler = (ctx, args) => {
+  const { primaryDb, res, req } = ctx;
+  const { employeeId } = args;
+  
+  try {
+     const records = primaryDb.prepare('SELECT * FROM employee_p_salary_details WHERE employee_id = ? ORDER BY effective_from DESC').all(employeeId);
+     const salaryHeads = primaryDb.prepare('SELECT id, name, type FROM salary_heads WHERE status = 1').all();
+     res.json({ records, salaryHeads });
+  } catch(e) {
+     res.json({ records: [], salaryHeads: [] });
+  }
+};
+
+export const savePSalaryDetailsForK: CommandHandler = (ctx, args) => {
+  const { primaryDb, res, req } = ctx;
+  const { employeeId, data } = args; // data is PSalaryDetailsDTO
+  const userId = req.headers['x-user-id'] || null;
+
+  try {
+     const bridgeRow = primaryDb.prepare("SELECT state FROM bridge_state WHERE id = 1").get() as any;
+     if (bridgeRow && bridgeRow.state === 'DISCONNECTED_AUDIT') {
+         return res.status(403).json({ error: 'Cannot edit P module details while disconnected' });
+     }
+
+     if (data.id) {
+         primaryDb.prepare(`
+           UPDATE employee_p_salary_details 
+           SET effective_from = ?, statutory_working_day_type = ?, statutory_wage_type = ?, statutory_base_rate = ?, salary_head_json = ?, modified_at = CURRENT_TIMESTAMP, modified_by = ?
+           WHERE id = ?
+         `).run(data.effective_from, data.statutory_working_day_type, data.statutory_wage_type, data.statutory_base_rate, data.salary_head_json, userId, data.id);
+         
+         // Trigger Sync Queue
+         primaryDb.prepare("INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('employee_p_salary_details', ?, 'UPDATE')").run(data.id);
+     } else {
+         const result = primaryDb.prepare(`
+           INSERT INTO employee_p_salary_details (employee_id, effective_from, statutory_working_day_type, statutory_wage_type, statutory_base_rate, salary_head_json, created_by, modified_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         `).run(employeeId, data.effective_from, data.statutory_working_day_type, data.statutory_wage_type, data.statutory_base_rate, data.salary_head_json, userId, userId);
+         
+         // Trigger Sync Queue
+         primaryDb.prepare("INSERT INTO sync_queue (entity_type, entity_id, operation) VALUES ('employee_p_salary_details', ?, 'INSERT')").run(result.lastInsertRowid);
+     }
+
+     res.json({ status: 'success' });
+  } catch(e: any) {
+     res.status(500).json({ error: e.message });
+  }
+};
+
 export const getLeaveCreditPreview: CommandHandler = (ctx, args) => {
   const { primaryDb, statutoryDb, res } = ctx;
   const { leaveConfigId, deptId, locationId, categoryId, moduleType } = args;

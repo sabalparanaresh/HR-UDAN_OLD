@@ -88,13 +88,17 @@ export const getProcessedSalaryForBank: CommandHandler = (ctx, args) => {
           // Note: final_payroll already contains emp_code, name, bank_name, account_no, ifsc, net_payable_final
           const rows = db.prepare(`
             SELECT 
-              *, 
-              name as first_name, 
+              fp.*, 
+              fp.name as first_name, 
               '' as last_name,
-              net_payable_final as net_salary,
-              ifsc as ifsc_code
-            FROM final_payroll 
-            WHERE month_year = ?
+              fp.net_payable_final as net_salary,
+              fp.ifsc as ifsc_code,
+              e.as_per_bank_name,
+              e.phone,
+              e.email
+            FROM final_payroll fp
+            LEFT JOIN employees e ON fp.emp_code = e.emp_code
+            WHERE fp.month_year = ?
           `).all(month);
           res.json(rows);
           

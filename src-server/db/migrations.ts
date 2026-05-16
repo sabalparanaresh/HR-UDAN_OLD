@@ -276,6 +276,20 @@ export function runPostSetupMigrations(primaryDb: Database.Database, statutoryDb
   addHistoryFields(primaryDb);
   addHistoryFields(statutoryDb);
 
+  // 9. Add attendance_qty to daily_mis_entries
+  const addAttendanceQty = (db: Database.Database) => {
+    try {
+      const info = db.prepare("PRAGMA table_info(daily_mis_entries)").all() as any[];
+      if (!info.find(c => c.name === 'attendance_qty')) {
+        db.exec("ALTER TABLE daily_mis_entries ADD COLUMN attendance_qty REAL DEFAULT 1");
+      }
+    } catch(e) {
+      logError(db, 'ERROR', 'Could not add attendance_qty to daily_mis_entries', e);
+    }
+  };
+
+  addAttendanceQty(primaryDb);
+
   try {
     const cols = statutoryDb.prepare("PRAGMA table_info(audit_amendment_log)").all() as any[];
     if (cols.length > 0 && !cols.some(c => c.name === 'entity')) {

@@ -177,9 +177,10 @@ export const masterCrud: CommandHandler = (ctx, args) => {
         try {
           if (['salary_heads', 'shifts', 'weekly_off', 'working_day_types'].includes(table_name)) {
             const allocationType = processedData.allocation_type || processedData.allocationType;
+            const identifierField = ['weekly_off'].includes(table_name) ? 'day' : 'name';
             if (allocationType === 'K_ONLY') {
               // Explicitly delete from Statutory to ensure it's not there
-              statutoryDb.prepare(`DELETE FROM ${table_name} WHERE name = ?`).run(processedData.name);
+              statutoryDb.prepare(`DELETE FROM ${table_name} WHERE ${identifierField} = ?`).run(processedData[identifierField]);
             } else if (allocationType) {
               // Sync to Statutory
               const newId = result.lastInsertRowid;
@@ -255,10 +256,11 @@ export const masterCrud: CommandHandler = (ctx, args) => {
         try {
           if (['salary_heads', 'shifts', 'weekly_off', 'working_day_types'].includes(table_name)) {
             const allocationType = processedData.allocation_type || processedData.allocationType;
-            const entityName = processedData.name || primaryDb.prepare(`SELECT name FROM ${table_name} WHERE id = ?`).get(id)?.name;
+            const identifierField = ['weekly_off'].includes(table_name) ? 'day' : 'name';
+            const entityName = processedData[identifierField] || primaryDb.prepare(`SELECT ${identifierField} FROM ${table_name} WHERE id = ?`).get(id)?.[identifierField];
             
             if (allocationType === 'K_ONLY') {
-              if (entityName) statutoryDb.prepare(`DELETE FROM ${table_name} WHERE name = ?`).run(entityName);
+              if (entityName) statutoryDb.prepare(`DELETE FROM ${table_name} WHERE ${identifierField} = ?`).run(entityName);
             } else {
               // We need to sync. If we have the full record, it's better.
               // But since we are inside UPDATE, 'processedData' might be partial.
@@ -380,13 +382,14 @@ export const saveDailyMisBatch: CommandHandler = (ctx, args) => {
     primaryDb.transaction(() => {
       const stmt = primaryDb.prepare(`
         INSERT INTO daily_mis_entries (
-          date, emp_id, emp_code, name, master_designation, current_designation, standard_rate, worked_rate, variance
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          date, emp_id, emp_code, name, master_designation, current_designation, standard_rate, worked_rate, variance, attendance_qty
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(date, emp_id) DO UPDATE SET
           current_designation = excluded.current_designation,
           standard_rate = excluded.standard_rate,
           worked_rate = excluded.worked_rate,
-          variance = excluded.variance
+          variance = excluded.variance,
+          attendance_qty = excluded.attendance_qty
       `);
 
       for (const entry of entries) {
@@ -400,7 +403,8 @@ export const saveDailyMisBatch: CommandHandler = (ctx, args) => {
           entry.current_designation || '',
           entry.standard_rate || 0,
           entry.worked_rate || 0,
-          entry.variance || 0
+          entry.variance || 0,
+          entry.attendance_qty ?? 1
         );
       }
     })();

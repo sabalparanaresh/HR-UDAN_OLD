@@ -33,9 +33,14 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   'user_crud': general.userCrud,
   'update_connection_status': general.updateConnectionStatus,
   'get_connection_status': general.getConnectionStatus,
+  'get_reconnect_audit_logs': general.getReconnectAuditLogs,
+  'reconcile_k_p': general.reconcileKP,
+  'resolve_reconnect': general.resolveReconnect,
   'get_last_sync_timestamp': general.getLastSyncTimestamp,
   'get_company_config': config.getCompanyConfig,
   'save_company_config': config.saveCompanyConfig,
+  'get_payroll_rules': config.getPayrollRules,
+  'update_payroll_rules': config.updatePayrollRules,
   'piece_rate_crud': crud.pieceRateCrud,
   'get_bank_excel_configs': banking.getBankExcelConfigs,
   'save_bank_excel_config': banking.saveBankExcelConfig,
@@ -61,6 +66,7 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   },
   
   // Payroll
+  'get_payroll_exceptions': payroll.getPayrollExceptions,
   'get_paginated_salary_results': payroll.getPaginatedSalaryResults,
   'calculate_payroll_draft': payroll.calculatePayrollDraft,
   'calculate_k_module_wages': payroll.calculateKModuleWages,
@@ -81,6 +87,8 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   'get_open_grievances': employee.getOpenGrievances,
   'resolve_grievance': employee.resolveGrievance,
   'search_employees': employee.searchEmployees,
+  'get_p_salary_details_for_k': employee.getPSalaryDetailsForK,
+  'save_p_salary_details_for_k': employee.savePSalaryDetailsForK,
   'sync_employee_to_pakka': employee.syncEmployeeToPakka,
 
   // Attendance
@@ -90,6 +98,8 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   'generate_ghost_punches': attendance.generateGhostPunches,
   'process_attendance': attendance.processAttendance,
   'bulk_attendance_v2': attendance.bulkAttendanceV2,
+  'resolve_attendance_anomalies': attendance.resolveAttendanceAnomalies,
+  'get_attendance_anomalies': attendance.getAttendanceAnomalies,
 
   // Master Data
   'get_master_data': masterData.getMasterData,

@@ -160,6 +160,11 @@ function mapBifurcationToColumns(bifurcation: Record<string, number>) {
 
 function isKConnected(primaryDb: any) {
   try {
+    const bridgeRow = primaryDb.prepare("SELECT state FROM bridge_state WHERE id = 1").get() as any;
+    if (bridgeRow) {
+      if (bridgeRow.state === 'DISCONNECTED_AUDIT') return false;
+      return bridgeRow.state === 'CONNECTED';
+    }
     const status = primaryDb.prepare("SELECT value FROM settings WHERE key = 'connection_status'").get() as any;
     return (status?.value || 'CONNECTED') === 'CONNECTED';
   } catch (e) {
@@ -1214,6 +1219,30 @@ export async function startLegacyServer(app: any, isVite: boolean) {
 
 
 
+const bridgeGuardMiddleware = (primaryDb: any) => {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    try {
+      const bridgeRow = primaryDb.prepare("SELECT state FROM bridge_state WHERE id = 1").get() as any;
+      const isDisconnected = bridgeRow?.state === 'DISCONNECTED_AUDIT';
+      
+      if (isDisconnected) {
+          // Identify sync commands
+          let cmd = req.body?.cmd;
+          
+          if (!cmd && (req.body?.encodedBody || req.body?.wdata)) {
+              // rough check, decoding handles it down the line, but we can catch direct ones
+          }
+          
+          const blockedCommands = ['sync_salary_slabs_to_p', 'sync_employee_to_pakka', 'sync_k_to_p'];
+          if (cmd && blockedCommands.includes(cmd)) {
+             return res.status(403).json({ error: 'Sync blocked: System is in DISCONNECTED_AUDIT state. P Module is operating in standalone mode via Isolation Circuit Breaker.' });
+          }
+      }
+    } catch(e) {}
+    next();
+  };
+};
+
 function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any, dbState: { isReady: boolean }) {
   app.get('/api/health', (req, res) => {
     if (!dbState.isReady) {
@@ -1223,7 +1252,7 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
   });
 
   // Tauri Invoke Emulator Endpoint (v1)
-  app.post('/api/data-sync', apiKeyMiddleware, async (req, res) => {
+  app.post('/api/data-sync', apiKeyMiddleware, bridgeGuardMiddleware(primaryDb), async (req, res) => {
     if (!dbState.isReady) {
       return res.status(503).json({ error: 'Database is still initializing' });
     }

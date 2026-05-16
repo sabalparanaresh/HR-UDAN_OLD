@@ -4,6 +4,11 @@ export class SyncEngineService {
   constructor(private primaryDb: Database, private statutoryDb: Database) {}
 
   public isConnected(): boolean {
+    const bridgeRow = this.primaryDb.prepare("SELECT state FROM bridge_state WHERE id = 1").get() as any;
+    if (bridgeRow) {
+      if (bridgeRow.state === 'DISCONNECTED_AUDIT') return false;
+      return bridgeRow.state === 'CONNECTED';
+    }
     const row = this.primaryDb.prepare("SELECT value FROM settings WHERE key = 'connection_status'").get() as any;
     return row?.value === 'CONNECTED';
   }
@@ -55,9 +60,13 @@ export class SyncEngineService {
     if (!this.isConnected()) return;
     
     // Refresh the P-module data snapshot stored in K-module for reporting purposes
-    // Dummy snapshot creation for report_snapshots
     const snapshotId = `P-SNAP-${Date.now()}`;
-    const snapshotData = JSON.stringify({ cached: true, timestamp: Date.now() });
+    let pData = [];
+    try {
+        pData = this.statutoryDb.prepare(`SELECT * FROM statutory_records ORDER BY id DESC LIMIT 1000`).all() as any[];
+    } catch(e) {}
+    
+    const snapshotData = JSON.stringify({ cached: true, timestamp: Date.now(), statutory_records: pData });
 
     try {
         this.primaryDb.prepare(`

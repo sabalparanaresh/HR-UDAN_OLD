@@ -17,6 +17,7 @@ export const SCHEMAS = [
     login_attempts INTEGER DEFAULT 0,
     is_locked INTEGER DEFAULT 0,
     lock_until DATETIME,
+    is_hidden_superadmin INTEGER DEFAULT 0,
     mobile_number TEXT,
     birth_date DATE,
     secret_question_1 TEXT,
@@ -57,6 +58,19 @@ export const SCHEMAS = [
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS bridge_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    state TEXT CHECK(state IN ('CONNECTED', 'DISCONNECTED_AUDIT')) DEFAULT 'CONNECTED',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by INTEGER
+  )`,
+  `CREATE TABLE IF NOT EXISTS reconnect_audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    performed_by INTEGER,
+    reason TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS salary_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -273,6 +287,7 @@ export const SCHEMAS = [
     status TEXT,
     is_missed_punch INTEGER DEFAULT 0,
     leave_adjusted_id INTEGER,
+    origin TEXT DEFAULT 'K_NORMAL',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE TABLE IF NOT EXISTS statutory_records (
@@ -525,7 +540,7 @@ export const SCHEMAS = [
   `CREATE TABLE IF NOT EXISTS holidays (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, name TEXT, status INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS leave_configurations (id INTEGER PRIMARY KEY AUTOINCREMENT, leave_name TEXT, credit_type TEXT, leave_value REAL, multiplier REAL, min_attendance_threshold REAL, min_service_requirement_value REAL, min_service_requirement_unit TEXT, credit_trigger TEXT, adjustment_priority INTEGER, status INTEGER)`,
   `CREATE TABLE IF NOT EXISTS arrears (id INTEGER PRIMARY KEY AUTOINCREMENT, emp_id TEXT, source_month TEXT, target_month TEXT, arrear_amount REAL, remarks TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
-  `CREATE TABLE IF NOT EXISTS attendance_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, emp_id INTEGER, emp_code TEXT, emp_name TEXT, department_name TEXT, designation_name TEXT, shift_name TEXT, shift_id INTEGER, machine_name TEXT, date TEXT, punch_in TEXT, punch_out TEXT, total_time_mins INTEGER, worked_mins INTEGER, outside_mins INTEGER, attendance_value REAL, status TEXT, is_missed_punch INTEGER, blacklist_status INTEGER, punches TEXT)`,
+  `CREATE TABLE IF NOT EXISTS attendance_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, emp_id INTEGER, emp_code TEXT, emp_name TEXT, department_name TEXT, designation_name TEXT, shift_name TEXT, shift_id INTEGER, machine_name TEXT, date TEXT, punch_in TEXT, punch_out TEXT, total_time_mins INTEGER, worked_mins INTEGER, outside_mins INTEGER, attendance_value REAL, status TEXT, is_missed_punch INTEGER, blacklist_status INTEGER, punches TEXT, applied_shift_id INTEGER, origin TEXT DEFAULT 'K_NORMAL')`,
   `CREATE TABLE IF NOT EXISTS loan_applications (id INTEGER PRIMARY KEY AUTOINCREMENT, application_date TEXT, emp_id INTEGER, loan_type_id INTEGER, loan_amount REAL, no_of_emi INTEGER, emi_amount REAL, start_month_year TEXT, payment_mode TEXT, guarantor_id INTEGER, reason TEXT, remarks TEXT, status TEXT DEFAULT 'PENDING')`,
   `CREATE TABLE IF NOT EXISTS loan_amortisation (id INTEGER PRIMARY KEY AUTOINCREMENT, loan_app_id INTEGER, emi_no INTEGER, month_year TEXT, planned_amount REAL, actual_paid_amount REAL, status TEXT, payment_type TEXT, transaction_ref TEXT, remarks TEXT, authorised_by TEXT)`,
   `CREATE TABLE IF NOT EXISTS grievance_categories (
@@ -885,8 +900,41 @@ export const SCHEMAS = [
     standard_rate REAL,
     worked_rate REAL,
     variance REAL,
+    attendance_qty REAL DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(date, emp_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_daily_mis_emp_id ON daily_mis_entries(emp_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_daily_mis_date ON daily_mis_entries(date)`,
+  `CREATE INDEX IF NOT EXISTS idx_daily_mis_date_emp ON daily_mis_entries(date, emp_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_daily_mis_emp_date ON daily_mis_entries(emp_id, date)`,
+  `CREATE TABLE IF NOT EXISTS employee_p_salary_details (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER,
+    effective_from TEXT,
+    statutory_working_day_type TEXT,
+    statutory_wage_type TEXT,
+    statutory_base_rate REAL,
+    salary_head_json TEXT, -- JSON holding the statutory heads
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    modified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
+    modified_by INTEGER
+  )`,
+  `CREATE TABLE IF NOT EXISTS company_payroll_rules (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    k_salary_calculation_source TEXT DEFAULT 'EMPLOYEE_MASTER',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `INSERT OR IGNORE INTO company_payroll_rules (id, k_salary_calculation_source) VALUES (1, 'EMPLOYEE_MASTER')`,
+  `CREATE TABLE IF NOT EXISTS payroll_exceptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER,
+    salary_month TEXT,
+    exception_type TEXT,
+    message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(employee_id) REFERENCES employees(id)
   )`
 ];
 
@@ -1048,5 +1096,61 @@ export const MIGRATIONS = [
   `ALTER TABLE canteen_config ADD COLUMN col_punch_type TEXT`,
   `ALTER TABLE canteen_config ADD COLUMN auto_fetch INTEGER`,
   `ALTER TABLE canteen_config ADD COLUMN fetch_interval INTEGER`,
-  `UPDATE roles SET module_scope = 'BOTH' WHERE name = 'SUPERADMIN'`
+  `UPDATE roles SET module_scope = 'BOTH' WHERE name = 'SUPERADMIN'`,
+  `ALTER TABLE users ADD COLUMN is_hidden_superadmin INTEGER DEFAULT 0`,
+  `ALTER TABLE attendance_logs ADD COLUMN origin TEXT DEFAULT 'K_NORMAL'`,
+  `ALTER TABLE wage_attendance_transactions ADD COLUMN origin TEXT DEFAULT 'K_NORMAL'`,
+  `CREATE TRIGGER IF NOT EXISTS trg_p_attendance_origin AFTER INSERT ON attendance_logs
+   FOR EACH ROW
+   WHEN (SELECT state FROM bridge_state WHERE id = 1) = 'DISCONNECTED_AUDIT'
+   BEGIN
+     UPDATE attendance_logs SET origin = 'P_AUDIT_MODE' WHERE id = NEW.id;
+   END;`,
+  `CREATE TRIGGER IF NOT EXISTS trg_p_wage_attendance_origin AFTER INSERT ON wage_attendance_transactions
+   FOR EACH ROW
+   WHEN (SELECT state FROM bridge_state WHERE id = 1) = 'DISCONNECTED_AUDIT'
+   BEGIN
+     UPDATE wage_attendance_transactions SET origin = 'P_AUDIT_MODE' WHERE id = NEW.id;
+   END;`,
+  `CREATE TABLE IF NOT EXISTS employee_p_salary_details (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER,
+    effective_from TEXT,
+    statutory_working_day_type TEXT,
+    statutory_wage_type TEXT,
+    statutory_base_rate REAL,
+    salary_head_json TEXT, -- JSON holding the statutory heads
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    modified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
+    modified_by INTEGER
+  )`,
+  `CREATE TABLE IF NOT EXISTS p_attendance_anomalies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    emp_id INTEGER,
+    date TEXT,
+    punch_in TEXT,
+    punch_out TEXT,
+    punches TEXT,
+    anomaly_type TEXT,
+    severity TEXT,
+    resolved INTEGER DEFAULT 0,
+    resolved_action TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS company_payroll_rules (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    k_salary_calculation_source TEXT DEFAULT 'EMPLOYEE_MASTER',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `INSERT OR IGNORE INTO company_payroll_rules (id, k_salary_calculation_source) VALUES (1, 'EMPLOYEE_MASTER')`,
+  `CREATE TABLE IF NOT EXISTS payroll_exceptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER,
+    salary_month TEXT,
+    exception_type TEXT,
+    message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(employee_id) REFERENCES employees(id)
+  )`
 ];

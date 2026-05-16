@@ -89,3 +89,39 @@ export const saveCompanyConfig: CommandHandler = (ctx, args) => {
     res.status(500).json({ error: `Database error: ${err.message}` });
   }
 };
+
+export const getPayrollRules: CommandHandler = (ctx, args) => {
+  const { primaryDb, res } = ctx;
+  try {
+    const row = primaryDb.prepare('SELECT * FROM company_payroll_rules WHERE id = 1').get() as any;
+    if (row) {
+      res.json(row);
+    } else {
+      res.json({ k_salary_calculation_source: 'EMPLOYEE_MASTER' });
+    }
+  } catch (err) {
+    logError(primaryDb, 'ERROR', '[Config] Failed to get payroll rules', err);
+    res.status(500).json({ error: 'Failed to fetch payroll rules' });
+  }
+};
+
+export const updatePayrollRules: CommandHandler = (ctx, args) => {
+  const { primaryDb, res } = ctx;
+  const { rules } = args;
+  try {
+    if (!rules || !rules.k_salary_calculation_source) {
+       return res.status(400).json({ error: 'Invalid payload' });
+    }
+    
+    primaryDb.prepare(`
+      INSERT OR REPLACE INTO company_payroll_rules (id, k_salary_calculation_source, updated_at)
+      VALUES (1, ?, CURRENT_TIMESTAMP)
+    `).run(rules.k_salary_calculation_source);
+    
+    res.json({ status: 'success' });
+  } catch (err: any) {
+    logError(primaryDb, 'ERROR', '[Config] Failed to update payroll rules', err);
+    res.status(500).json({ error: `Database error: ${err.message}` });
+  }
+};
+

@@ -597,7 +597,130 @@ export const bulkAttendanceV2Legacy: CommandHandler = (ctx, args) => {
   
 };
 
-export const legacyGhostPunchesPlaceholder: CommandHandler = (ctx, args) => {
-  const { primaryDb, statutoryDb, res, req } = ctx;
+export const resolveAttendanceAnomalies: CommandHandler = (ctx, args) => {
+  const { statutoryDb, res } = ctx;
+  let anomaliesFound = 0;
+  let anomaliesFixed = 0;
   
+  try {
+      const logs = statutoryDb.prepare("SELECT * FROM attendance_logs ORDER BY emp_id, punch_in").all() as any[];
+      let prevLog: any = null;
+
+      for (const log of logs) {
+        if (!log.punches || log.punches === '[]') continue;
+
+        let punchesArr: any[] = [];
+        try {
+            punchesArr = JSON.parse(log.punches);
+        } catch(e) { continue; }
+        
+        let originalPunches = [...punchesArr];
+        let changed = false;
+        let anomalyType = null;
+        let severity = null;
+        let quarantine = false;
+
+        // 1. Duplicate punches (within 5 minutes)
+        if (punchesArr.length > 0) {
+            const sorted = punchesArr.map((p: any) => new Date(p.timestamp || p.time || p).getTime()).filter((t:any) => !isNaN(t)).sort();
+            const uniquePunches = [];
+            let duplicateFound = false;
+
+            for (let i = 0; i < sorted.length; i++) {
+                if (i === 0) {
+                    uniquePunches.push(sorted[i]);
+                } else {
+                    if (sorted[i] - sorted[i-1] > 5 * 60 * 1000) {
+                        uniquePunches.push(sorted[i]);
+                    } else {
+                        duplicateFound = true;
+                    }
+                }
+            }
+
+            if (duplicateFound) {
+                anomalyType = 'DUPLICATE_PUNCHES';
+                severity = 'LOW';
+                changed = true;
+                punchesArr = uniquePunches.map((p) => ({ timestamp: new Date(p).toISOString() }));
+                // update punch_in and punch_out
+                if (punchesArr.length > 0) {
+                   log.punch_in = punchesArr[0].timestamp;
+                   log.punch_out = punchesArr.length > 1 ? punchesArr[punchesArr.length - 1].timestamp : log.punch_out;
+                }
+            }
+        }
+
+        // 2. Orphan OUT punch
+        if (punchesArr.length === 1 && !log.punch_in && log.punch_out) {
+            anomalyType = 'ORPHAN_OUT_PUNCH';
+            severity = 'MEDIUM';
+            quarantine = true;
+            changed = true;
+            log.punch_out = null; 
+            punchesArr = [];
+        }
+
+        // 3. Detect >16 hour shifts
+        if (log.punch_in && log.punch_out) {
+            const t1 = new Date(log.punch_in).getTime();
+            const t2 = new Date(log.punch_out).getTime();
+            if (t2 - t1 > 16 * 60 * 60 * 1000) {
+                anomalyType = 'EXCESSIVE_HOURS_16';
+                severity = 'HIGH';
+                quarantine = true;
+            }
+        }
+
+        // 4. Overlapping shifts (same emp_id, overlapping times)
+        if (prevLog && prevLog.emp_id === log.emp_id && prevLog.punch_in && log.punch_in && prevLog.punch_out) {
+            const prevT2 = new Date(prevLog.punch_out).getTime();
+            const curT1 = new Date(log.punch_in).getTime();
+            if (curT1 < prevT2) {
+                anomalyType = 'OVERLAPPING_SHIFT';
+                severity = 'HIGH';
+                quarantine = true;
+            }
+        }
+
+        if (anomalyType) {
+            anomaliesFound++;
+            statutoryDb.prepare(`
+              INSERT INTO p_attendance_anomalies (emp_id, date, punch_in, punch_out, punches, anomaly_type, severity)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(log.emp_id, log.date, log.punch_in, log.punch_out, JSON.stringify(originalPunches), anomalyType, severity);
+            
+            if (changed) {
+                statutoryDb.prepare("UPDATE attendance_logs SET punches = ?, punch_in = ?, punch_out = ? WHERE id = ?")
+                  .run(JSON.stringify(punchesArr), log.punch_in, log.punch_out, log.id);
+                anomaliesFixed++;
+            }
+            if (quarantine) {
+                statutoryDb.prepare("UPDATE attendance_logs SET blacklist_status = 1 WHERE id = ?").run(log.id);
+            }
+        }
+        prevLog = log;
+      }
+
+      res.json({ success: true, anomalies_found: anomaliesFound, anomalies_fixed: anomaliesFixed });
+  } catch(e) {
+      console.error(e);
+      res.json({ success: false, error: 'Failed to resolve anomalies' });
+  }
+};
+
+export const getAttendanceAnomalies: CommandHandler = (ctx, args) => {
+  const { statutoryDb, res } = ctx;
+  try {
+      const anomalies = statutoryDb.prepare(`
+         SELECT a.*, e.name as emp_name, e.emp_code
+         FROM p_attendance_anomalies a
+         LEFT JOIN employees e ON a.emp_id = e.id
+         ORDER BY a.created_at DESC
+         LIMIT 500
+      `).all();
+      res.json(anomalies);
+  } catch(e) {
+      res.json([]);
+  }
 };
