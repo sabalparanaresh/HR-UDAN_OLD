@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { AlertCircle } from 'lucide-react';
 
 export const CircuitBreaker = () => {

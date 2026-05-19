@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Usb, FolderDown, Download, Printer, HardDriveDownload, ShieldCheck, Mail } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { toast } from 'sonner';
 
 interface DistributionModalProps {

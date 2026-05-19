@@ -1,10 +1,32 @@
 import React, { useMemo, useCallback, useRef, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { ColDef, GridApi, GridReadyEvent, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
+import { 
+  ColDef, 
+  GridApi, 
+  GridReadyEvent, 
+  ModuleRegistry,
+  ClientSideRowModelModule,
+  PaginationModule,
+  ValidationModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  CustomFilterModule,
+  CsvExportModule
+} from 'ag-grid-community';
 import { Download, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { User } from '../../types';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  PaginationModule,
+  ValidationModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  CustomFilterModule,
+  CsvExportModule
+]);
 
 export interface BaseGridProps {
   rowData: any[];

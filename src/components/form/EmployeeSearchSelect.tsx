@@ -3,7 +3,7 @@ import { Search, ChevronDown, Check, X, Filter, User, UserCheck } from 'lucide-r
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { Employee } from '../../types';
 

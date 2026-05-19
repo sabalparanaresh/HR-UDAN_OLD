@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useForm, FormProvider, useFieldArray } from 'react-hook-form';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../../../../services/apiClient';
 import { toast } from 'sonner';
 import { Loader2, Plus, Save, History, Edit2 } from 'lucide-react';
 import { PSalaryDetailsDTO } from '../../../../../types/pSalaryDetails';

@@ -23,7 +23,7 @@ interface PincodeSearchProps {
   moduleType?: string;
 }
 
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 
 export default function PincodeSearch({ onResult, onNotFound, defaultValue = '', className, moduleType }: PincodeSearchProps) {
   const [pincode, setPincode] = useState(String(defaultValue || ''));

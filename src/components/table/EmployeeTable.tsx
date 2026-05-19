@@ -10,13 +10,13 @@ import {
   FilterFn,
   ColumnDef,
 } from '@tanstack/react-table';
-import * as tauri from '@tauri-apps/api/tauri';
+import { invokeCommand } from '../../services/apiClient';
 
-// Safe wrapper for convertFileSrc to handle non-Tauri environments
+// Identity mapping for paths in web mode
 const safeConvertFileSrc = (path: string) => {
   if (!path) return '';
   try {
-    return tauri && typeof tauri.convertFileSrc === 'function' ? tauri.convertFileSrc(path) : path;
+    return path;
   } catch (e) {
     return path;
   }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShieldAlert, X, Lock, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 
 interface SecurityLockModalProps {
   isOpen: boolean;

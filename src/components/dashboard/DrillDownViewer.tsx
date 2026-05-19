@@ -1,11 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
-import { invoke } from '@tauri-apps/api/tauri';
+import { 
+  ModuleRegistry,
+  ClientSideRowModelModule,
+  PaginationModule,
+  ValidationModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  CustomFilterModule,
+  CsvExportModule
+} from 'ag-grid-community';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { DrilldownStep } from '../../pages/reports/DashboardEngine';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  PaginationModule,
+  ValidationModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  CustomFilterModule,
+  CsvExportModule
+]);
 
 export function DrillDownViewer({ step, onNextStep }: { step: DrilldownStep, onNextStep: (nextStep: DrilldownStep) => void }) {
   const { currentMode } = useModule();
@@ -198,6 +217,7 @@ export function DrillDownViewer({ step, onNextStep }: { step: DrilldownStep, onN
          <span>Drilldown Level: {step.type}</span>
       </div>
       <AgGridReact
+        theme="legacy"
         rowData={data}
         columnDefs={colDefs}
         onRowClicked={onRowClicked}

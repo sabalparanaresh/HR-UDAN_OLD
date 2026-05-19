@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../services/apiClient';
 import { toast } from 'sonner';
 
 export const useAdvanceSimulation = (

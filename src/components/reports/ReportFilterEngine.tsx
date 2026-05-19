@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FilterDTO, FilterDTOSchema } from '../../types/ReportFilters';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { Filter, Calendar, Users, Briefcase, Play, Factory } from 'lucide-react';
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../services/apiClient';
 
 export const useFinalPayroll = (month: string, enabled: boolean = true) => {
   const [data, setData] = useState<any[]>([]);

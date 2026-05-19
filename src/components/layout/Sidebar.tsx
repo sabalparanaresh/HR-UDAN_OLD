@@ -57,11 +57,59 @@ interface SidebarProps {
 }
 
 import { useAuthStore } from '../../store/authStore';
+const pageMapping: Record<string, string> = {
+  "/user-management/access-control": "USER_MGMT_VIEW",
+  "/user-management/system-connection": "USER_MGMT_VIEW",
+  "/transactions/attendance": "Attendance.view",
+  "/transactions/salary": "Payroll.view",
+  "/reports/engine": "ReportingEngine.view",
+  "/reports/cost-mis": "CostMIS.view",
+  "/transactions/rokda-management": "CashWorker.view",
+  "/transactions/cash-management": "CashManagement.view",
+  "/transactions/daily-mis": "DailyMIS.view",
+  "/employee/master": "Employee.view",
+  "/hr-settings/company": "SETTINGS_VIEW",
+  "/transactions/advance": "Advance.view"
+};
+
+const Authorized: React.FC<{ 
+  path: string, 
+  children: React.ReactNode, 
+  currentMode: string, 
+  isConnected: boolean, 
+  currentRole: string, 
+  moduleScope: string, 
+  currentUser: any 
+}> = React.memo(({ path, children, currentMode, isConnected, currentRole, moduleScope, currentUser }) => {
+  // Mode-based restrictions
+  if ((path === '/transactions/rokda-management' || path === '/transactions/cash-management' || path === '/transactions/daily-mis') && currentMode !== 'K') return <></>;
+  
+  // Circuit Breaker Restriction
+  if (currentMode === 'K' && !isConnected) return <></>;
+  
+  // SuperAdmin check
+  if (currentRole === 'SUPERADMIN') {
+     return <>{children}</>;
+  }
+  
+  const permissionStr = pageMapping[path];
+  if (!permissionStr) return <>{children}</>; // Default allow for unspecified routes initially
+  
+  // Check using authorize from RBAC cache
+  if (moduleScope !== 'BOTH' && moduleScope !== currentMode) return <></>;
+  
+  // Use dynamic RBAC if mapping is present
+  const hasPerm = authorize(currentUser, `${permissionStr}.view`, currentMode as 'K'|'P') || authorize(currentUser, permissionStr, currentMode as 'K'|'P');
+  
+  return hasPerm ? <>{children}</> : <></>;
+});
+
 export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
   const { currentMode, isConnected } = useModule();
   const { permissionMap, moduleScope } = useAuthStore();
   const user = useAuthStore(state => state.user);
   const currentRole = currentUser?.role || 'ADMIN'; // Default
+
   const availableReports = getReportsForRoleAndModule(currentRole, currentMode as 'K' | 'P');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
@@ -140,7 +188,6 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
           items: [
             { label: "Salary Heads", path: "/hr-settings/salary-heads", icon: <Calculator size={16} /> },
             { label: "Salary Slabs", path: "/hr-settings/salary-slabs", icon: <Calculator size={16} /> },
-            { label: "Payroll Rules", path: "/hr-settings/payroll-rules", icon: <Settings size={16} />, module: "K" },
             { label: "Piece Rate Config", path: "/hr-settings/piece-rate", icon: <Settings size={16} /> },
             { label: "Statutory Settings", path: "/hr-settings/statutory-settings", icon: <ShieldCheck size={16} /> },
             { label: "Loan Types", path: "/hr-settings/loan-types", icon: <Calculator size={16} /> },
@@ -201,45 +248,7 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
     }
   ];
 
-  const pageMapping: Record<string, string> = {
-    "/user-management/access-control": "USER_MGMT_VIEW",
-    "/user-management/system-connection": "USER_MGMT_VIEW",
-    "/transactions/attendance": "Attendance.view",
-    "/transactions/salary": "Payroll.view",
-    "/reports/engine": "ReportingEngine.view",
-    "/reports/cost-mis": "CostMIS.view",
-    "/transactions/rokda-management": "CashWorker.view",
-    "/transactions/cash-management": "CashManagement.view",
-    "/transactions/daily-mis": "DailyMIS.view",
-    "/employee/master": "Employee.view",
-    "/hr-settings/company": "SETTINGS_VIEW",
-    "/hr-settings/payroll-rules": "SETTINGS_VIEW",
-    "/transactions/advance": "Advance.view"
-  };
 
-  const Authorized: React.FC<{ path: string, children: React.ReactNode }> = ({ path, children }) => {
-    // Mode-based restrictions
-    if ((path === '/transactions/rokda-management' || path === '/transactions/cash-management' || path === '/transactions/daily-mis') && currentMode !== 'K') return <></>;
-    
-    // Circuit Breaker Restriction
-    if (currentMode === 'K' && !isConnected) return <></>;
-    
-    // SuperAdmin check
-    if (currentRole === 'SUPERADMIN') {
-       return <>{children}</>;
-    }
-    
-    const permissionStr = pageMapping[path];
-    if (!permissionStr) return <>{children}</>; // Default allow for unspecified routes initially
-    
-    // Check using authorize from RBAC cache
-    if (moduleScope !== 'BOTH' && moduleScope !== currentMode) return <></>;
-    
-    // Use dynamic RBAC if mapping is present
-    const hasPerm = authorize(currentUser, `${permissionStr}.view`, currentMode as 'K'|'P') || authorize(currentUser, permissionStr, currentMode as 'K'|'P');
-    
-    return hasPerm ? <>{children}</> : <></>;
-  };
 
   const isSyncing = isConnected;
 
@@ -335,7 +344,15 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
                               className="overflow-hidden"
                             >
                               {sub.items.map((item, itemIdx) => (
-                                <Authorized key={itemIdx} path={item.path}>
+                                <Authorized 
+                                  key={itemIdx} 
+                                  path={item.path}
+                                  currentMode={currentMode}
+                                  isConnected={isConnected}
+                                  currentRole={currentRole}
+                                  moduleScope={moduleScope}
+                                  currentUser={currentUser}
+                                >
                                   <SidebarItem 
                                     item={item}
                                     isCollapsed={isCollapsed}
@@ -351,7 +368,15 @@ export default function Sidebar({ currentUser, onLogout }: SidebarProps) {
                   ) : (
                     <div className="space-y-1">
                       {group.items.map((item, itemIdx) => (
-                        <Authorized key={itemIdx} path={item.path}>
+                        <Authorized 
+                          key={itemIdx} 
+                          path={item.path}
+                          currentMode={currentMode}
+                          isConnected={isConnected}
+                          currentRole={currentRole}
+                          moduleScope={moduleScope}
+                          currentUser={currentUser}
+                        >
                           <SidebarItem 
                             item={item}
                             isCollapsed={isCollapsed}

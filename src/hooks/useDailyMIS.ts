@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../services/apiClient';
 import { toast } from 'sonner';
 
 export interface DailyMISEntry {

@@ -16,6 +16,8 @@ import GrievanceDashboard from '../../pages/reports/GrievanceDashboard';
 import AuditHistory from '../../pages/reports/AuditHistory';
 import AuditAnalytics from '../../pages/reports/AuditAnalytics';
 
+import PreDefinedReportsPage from '../../pages/reports/PreDefinedReportsPage';
+
 function PlaceholderPage({ title }: { title: string }) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -59,6 +61,7 @@ export const ReportsRoutes = (currentUser: User | null) => {
       <Route path="grievances" element={<ProtectedRoute moduleCode="*" pageKey="grievances"><GrievanceDashboard /></ProtectedRoute>} />
       <Route path="audit-history" element={<ProtectedRoute moduleCode="*" pageKey="auditHistory"><AuditHistory /></ProtectedRoute>} />
       <Route path="audit-analytics" element={<ProtectedRoute moduleCode="*" pageKey="auditAnalytics"><AuditAnalytics currentUser={currentUser!} /></ProtectedRoute>} />
+      <Route path="pre-defined" element={<ProtectedRoute moduleCode="*" pageKey="preDefinedReports"><PreDefinedReportsPage /></ProtectedRoute>} />
       <Route path="payslip" element={<PlaceholderPage title="Payslip" />} />
       <Route path="cost-mis" element={<PlaceholderPage title="Cost MIS Reports" />} />
     </Route>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { authorize } from '../../lib/rbac';
 import { useAuthStore } from '../../store/authStore';
-import { ErrorBoundary } from '../common/ErrorBoundary';
+import { ErrorBoundary } from '../';
 import { AccessDeniedFallback } from './AccessDeniedFallback';
 
 export function ProtectedRoute({ 

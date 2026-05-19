@@ -5,7 +5,6 @@ import { useAuthStore } from '../../store/authStore';
 import { User } from '../../types';
 
 import PieceRateConfig from '../../pages/hr-settings/PieceRateConfig';
-import PayrollRulesSettings from '../../modules/k/settings/payroll-rules/PayrollRulesSettings';
 import CompanySettings from '../../pages/hr-settings/CompanySettings';
 import BankMaster from '../../pages/hr-settings/BankMaster';
 import PincodeMaster from '../../pages/hr-settings/PincodeMaster';
@@ -28,7 +27,6 @@ import CanteenSettings from '../../pages/hr-settings/CanteenSettings';
 export const HrSettingsRoutes = (currentUser: User | null) => {
   return (
     <Route path="hr-settings">
-      <Route path="payroll-rules" element={<ProtectedRoute moduleCode="K" pageKey="settings"><PayrollRulesSettings /></ProtectedRoute>} />
       <Route path="piece-rate" element={<ProtectedRoute moduleCode="K" pageKey="settings"><PieceRateConfig /></ProtectedRoute>} />
       <Route path="company" element={<ProtectedRoute moduleCode="K" pageKey="settings"><CompanySettings currentUser={currentUser!} /></ProtectedRoute>} />
       <Route path="bank-master" element={<ProtectedRoute moduleCode="*" pageKey="bankMaster"><BankMaster /></ProtectedRoute>} />

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../services/apiClient';
 import { useGlobalFilter } from '../store/useGlobalFilter';
 import { useModule } from '../contexts/ModuleContext';
 import { useState, useEffect } from 'react';

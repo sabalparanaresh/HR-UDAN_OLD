@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { 
   Upload, 
   Download, 
@@ -13,7 +13,7 @@ import {
   Info,
   X
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { toast } from 'sonner';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -232,7 +232,7 @@ export default function BulkEmployeeUpload({ onSuccess, currentMode }: BulkEmplo
     setIsParsing(true);
     const reader = new FileReader();
 
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const bstr = evt.target?.result;
       if (!bstr) {
         setIsParsing(false);
@@ -240,7 +240,7 @@ export default function BulkEmployeeUpload({ onSuccess, currentMode }: BulkEmplo
       }
 
       try {
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = await XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const rawData = XLSX.utils.sheet_to_json(ws, { defval: "" }) as any[];
