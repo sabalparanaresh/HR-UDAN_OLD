@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../apiClient';
 
 export interface ApiError {
   message: string;
@@ -8,7 +8,7 @@ export interface ApiError {
 
 export class BaseService {
   /**
-   * Universal wrapper for Tauri IPC calls.
+   * Universal wrapper for fetch calls via apiClient.
    * Centralizes error catching, mapping, and potentially logging or retry logic.
    */
   protected static async call<T>(command: string, args?: Record<string, any>): Promise<T> {

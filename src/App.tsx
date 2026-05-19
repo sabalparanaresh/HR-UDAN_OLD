@@ -2,7 +2,7 @@ import { ProtectedRoute } from './components/auth';
 import { AuthScreen, LoginForm, PasswordResetForm } from './modules/auth';
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from './services/apiClient';
 import { User } from './types';
 import Layout from './components/layout/Layout';
 
@@ -20,7 +20,8 @@ import { Toaster } from 'sonner';
 
 import { useAuthStore } from './store/authStore';
 
-import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { ErrorBoundary } from './components';
+import { GlobalTaskListeners } from './components/GlobalTaskListeners';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -69,6 +70,7 @@ export default function App() {
   return (
     <ModuleProvider>
       <ShortcutProvider>
+        <GlobalTaskListeners />
         <Toaster position="top-right" richColors closeButton />
         {!isLoggedIn ? (
           <AuthScreen>

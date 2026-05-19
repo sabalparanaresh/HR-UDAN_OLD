@@ -21,7 +21,7 @@ HR-UDAN uses **Zustand** for global state management and React Contexts for tigh
    - Provides an ephemeral context filter (Wage Month/Year or Date Range) applicable across transaction forms and standard listing screens.
 
 5. **`ModuleContext.tsx`** (Context)
-   - Governs the `K` vs `P` mode toggle (`Alt+Shift+K` Audit mode) explicitly connected to Tauri IPC checks for connectivity.
+   - Governs the `K` vs `P` mode toggle (`Alt+Shift+K` Audit mode) explicitly connected to network checks for connectivity.
    - Serves as the primary circuit breaker for offline mode rules.
 
 ## Design Patterns

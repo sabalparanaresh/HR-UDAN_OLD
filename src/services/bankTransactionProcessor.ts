@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from './apiClient';
 import { BankAccountConfig } from '../hooks/useBankAccountConfig';
 import { resolveTemplateVariable } from './templateVariableResolver';
 

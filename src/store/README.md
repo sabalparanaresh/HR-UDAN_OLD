@@ -1,7 +1,7 @@
 # Store Architecture Directory
 
 ## Role
-This directory contains Zustand global state stores. State management here is limited to client-side caching of configurations, layouts, ephemeral filters, and report settings. Business domain states should remain inside component local state or fetched data services to ensure "offline-first" synchronicity with the backend (`Tauri` API calls).
+This directory contains Zustand global state stores. State management here is limited to client-side caching of configurations, layouts, ephemeral filters, and report settings. Business domain states should remain inside component local state or fetched data services to ensure "offline-first" synchronicity with the backend (API calls).
 
 ## Stores
 - `authStore.ts`: Authentication, user permissions, global "Audit Mode" circuit breaker state.

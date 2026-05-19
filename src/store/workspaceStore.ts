@@ -7,15 +7,20 @@ interface WorkspaceState {
     K: string;
     P: string;
   };
+  isModulePConnected: boolean;
+  lastSnapshotTimestamp: string | null;
   setWorkspace: (workspace: 'K' | 'P') => void;
   toggleWorkspace: () => void;
   setLastRoute: (workspace: 'K' | 'P', route: string) => void;
+  setModulePConnection: (connected: boolean, timestamp?: string) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set, get) => ({
       activeWorkspace: 'K',
+      isModulePConnected: true,
+      lastSnapshotTimestamp: null,
       lastRoutes: {
         K: '/reports/dashboard',
         P: '/reports/dashboard',
@@ -30,6 +35,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           ...state.lastRoutes,
           [workspace]: route,
         }
+      })),
+      setModulePConnection: (connected, timestamp) => set((state) => ({
+        isModulePConnected: connected,
+        lastSnapshotTimestamp: timestamp || state.lastSnapshotTimestamp,
       })),
     }),
     {

@@ -203,6 +203,10 @@ export const useReportStore = create<ReportStore>()(
       }),
       {
         name: 'hr-udan-report-store',
+        partialize: (state) => ({
+          K: { ...state.K, exportQueue: [] },
+          P: { ...state.P, exportQueue: [] },
+        }),
       }
     ),
     { name: 'ReportStore' }
