@@ -1,20 +1,40 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# HR-UDAN
 
-# Run and deploy your AI Studio app
+Enterprise HRMS application for the Indian textile industry, built with a dual-module architecture (Module K for Actuals, Module P for Statutory compliance).
 
-This contains everything you need to run your app locally.
+## Web Server Application Deployment Process
 
-View your app in AI Studio: https://ai.studio/apps/e731e010-77de-4420-8d4e-c2eb474ce62c
+HR-UDAN is a full-stack web application built using React + Vite on the front-end, and Node/Express on the backend.
 
-## Run Locally
+### Prerequisites
+- Node.js (v18 or higher)
+- npm (v9 or higher)
 
-**Prerequisites:**  Node.js
+### Step 1: Install Dependencies
+Navigate to the root directory and install the necessary dependencies:
+```bash
+npm install
+```
 
+### Step 2: Build the Application
+Run the build script to compile the React application and the backend for production:
+```bash
+npm run build
+```
+This command bundles the frontend code into the `dist/` directory and transpiles the backend server into `dist-server/`.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Step 3: Run the Application
+Start the backend server which also serves the built frontend:
+```bash
+npm start
+```
+
+---
+
+## Architecture Context
+
+HR-UDAN operates on two distinct databases for enterprise stability:
+- `primary.db` (Module K) - Operational / Actuals
+- `statutory.db` (Module P) - Compliance / Statutory
+
+The application uses SQLite WAL mode for performance and a custom SyncBridge for K->P data synchronization. Ensure the host system has sufficient write permissions in the directory where the application is installed or executed.

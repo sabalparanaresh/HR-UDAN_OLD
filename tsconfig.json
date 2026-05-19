@@ -21,6 +21,10 @@
       ]
     },
     "allowImportingTsExtensions": false,
+    "strict": false,
+    "noImplicitAny": false,
+    "noImplicitThis": false,
+    "strictNullChecks": false,
     "noEmit": true
   }
 }
