@@ -317,6 +317,58 @@ export function runPostSetupMigrations(primaryDb: Database.Database, statutoryDb
     logError(statutoryDb, 'ERROR', 'Could not migrate audit_amendment_log', e);
   }
 
+  // 10. Migrate Attendance Punches from JSON string to normalized table
+  const migratePunches = (db: Database.Database) => {
+    try {
+      // Check if migration is needed by checking if attendance_punches is empty but attendance_logs has JSON punches
+      const punchCount = db.prepare("SELECT COUNT(*) as c FROM attendance_punches").get() as any;
+      if (punchCount.c === 0) {
+        let offset = 0;
+        const limit = 1000;
+        let hasMore = true;
+
+        const insertPunch = db.prepare(`
+          INSERT INTO attendance_punches (attendance_log_id, punch_time, punch_type, device_id) 
+          VALUES (?, ?, ?, ?)
+        `);
+
+        while (hasMore) {
+          const logs = db.prepare("SELECT id, punches FROM attendance_logs WHERE punches IS NOT NULL AND punches != '[]' LIMIT ? OFFSET ?").all(limit, offset) as any[];
+          if (logs.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          db.transaction((logsBatch: any[]) => {
+            for (const log of logsBatch) {
+              try {
+                const punchesArray = JSON.parse(log.punches);
+                for (let i = 0; i < punchesArray.length; i++) {
+                  const p = punchesArray[i];
+                  if (p.punch_in) {
+                    insertPunch.run(log.id, p.punch_in, 'IN', p.device || 'migration');
+                  }
+                  if (p.punch_out) {
+                    insertPunch.run(log.id, p.punch_out, 'OUT', p.device || 'migration');
+                  }
+                }
+              } catch (parseError) {
+                // Ignore parse errors on bad data
+              }
+            }
+          })(logs);
+
+          offset += limit;
+        }
+      }
+    } catch(e) {
+      logError(db, 'ERROR', 'Could not migrate attendance_punches', e);
+    }
+  };
+
+  migratePunches(primaryDb);
+  migratePunches(statutoryDb);
+
   applyAuditTriggers(primaryDb);
   applyAuditTriggers(statutoryDb);
 }

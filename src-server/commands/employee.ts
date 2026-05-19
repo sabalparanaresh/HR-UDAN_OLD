@@ -128,7 +128,7 @@ export const savePSalaryDetailsForK: CommandHandler = (ctx, args) => {
          `).run(employeeId, data.effective_from, data.statutory_working_day_type, data.statutory_wage_type, data.statutory_base_rate, data.salary_head_json, userId, userId);
          
          // Trigger Sync Queue
-         primaryDb.prepare("INSERT INTO sync_queue (entity_type, entity_id, operation) VALUES ('employee_p_salary_details', ?, 'INSERT')").run(result.lastInsertRowid);
+         primaryDb.prepare("INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('employee_p_salary_details', ?, 'INSERT')").run(result.lastInsertRowid);
      }
 
      res.json({ status: 'success' });
@@ -721,3 +721,24 @@ export const getFfClearance: CommandHandler = (ctx, args) => {
           });
           
 };
+
+export const processWaterfallDistribution: CommandHandler = (ctx, args) => {
+  const { primaryDb, statutoryDb, res } = ctx;
+  const { parent_id, month, moduleType } = args;
+  const db = moduleType === 'P' ? statutoryDb : primaryDb;
+
+  try {
+    const parent = db.prepare('SELECT * FROM employees WHERE id = ?').get(parent_id) as any;
+    if (!parent) return res.json({ totalPool: 0, residual: 0, logs: [] });
+    
+    // In emulator, we'll just mock the waterfall result
+    res.json({
+      totalPool: parent.wage_amount || 0,
+      residual: 0,
+      logs: [{ message: 'Waterfall calculation successful' }]
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+

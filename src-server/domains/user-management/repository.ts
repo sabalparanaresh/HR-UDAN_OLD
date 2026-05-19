@@ -68,9 +68,9 @@ export class UserManagementRepository {
 
     createUser(data: any): number {
         const info = this.db.prepare(`
-            INSERT INTO users (name, username, password_hash, password, role_id, status, mobile_number, birth_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(data.name, data.username, data.password_hash || data.password, data.password, data.role_id, data.status || 'ACTIVE', data.mobile_number, data.birth_date);
+            INSERT INTO users (name, username, password_hash, role_id, status, mobile_number, birth_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(data.name, data.username, data.password_hash || data.password, data.role_id, data.status || 'ACTIVE', data.mobile_number, data.birth_date);
         return info.lastInsertRowid as number;
     }
 
@@ -85,8 +85,8 @@ export class UserManagementRepository {
         const params: any[] = [data.name, data.username, data.role_id, data.status, data.mobile_number, data.birth_date];
 
         if (data.password_hash || data.password) {
-            sql += `, password_hash = ?, password = ?`;
-            params.push(data.password_hash || data.password, data.password);
+            sql += `, password_hash = ?`;
+            params.push(data.password_hash || data.password);
         }
 
         sql += ` WHERE id = ?`;

@@ -1,6 +1,7 @@
 import { CommandHandler } from './types.js';
 import { mapKeys, toSnakeCase, sanitizeData } from '../utils/helpers.js';
 import { logError } from '../utils/logger.js';
+import { randomUUID } from 'crypto';
 
 export const getCompanyConfig: CommandHandler = (ctx, args) => {
   const { primaryDb, statutoryDb, res } = ctx;
@@ -106,17 +107,49 @@ export const getPayrollRules: CommandHandler = (ctx, args) => {
 };
 
 export const updatePayrollRules: CommandHandler = (ctx, args) => {
-  const { primaryDb, res } = ctx;
+  const { primaryDb, res, req } = ctx;
   const { rules } = args;
+  const userId = req.headers['x-user-id'] || null;
+
   try {
     if (!rules || !rules.k_salary_calculation_source) {
        return res.status(400).json({ error: 'Invalid payload' });
     }
     
+    // Get old rule
+    let oldSource = 'EMPLOYEE_MASTER';
+    try {
+      const oldRow = primaryDb.prepare('SELECT k_salary_calculation_source FROM company_payroll_rules WHERE id = 1').get() as any;
+      if (oldRow && oldRow.k_salary_calculation_source) {
+        oldSource = oldRow.k_salary_calculation_source;
+      }
+    } catch (e) {
+      // Ignore if table/row empty
+    }
+
     primaryDb.prepare(`
       INSERT OR REPLACE INTO company_payroll_rules (id, k_salary_calculation_source, updated_at)
       VALUES (1, ?, CURRENT_TIMESTAMP)
     `).run(rules.k_salary_calculation_source);
+    
+    // Insert Audit log if source changed
+    if (oldSource !== rules.k_salary_calculation_source) {
+      primaryDb.prepare(`
+        INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        randomUUID(),
+        userId,
+        'UPDATE',
+        'payroll_engine_source',
+        'company_payroll_rules',
+        JSON.stringify({
+          field: 'k_salary_calculation_source',
+          old_value: oldSource,
+          new_value: rules.k_salary_calculation_source
+        })
+      );
+    }
     
     res.json({ status: 'success' });
   } catch (err: any) {

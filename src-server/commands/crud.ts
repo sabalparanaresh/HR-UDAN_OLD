@@ -857,7 +857,7 @@ export const saveArrear: CommandHandler = (ctx, args) => {
 export const productionEntryCrud: CommandHandler = (ctx, args) => {
   const { primaryDb, statutoryDb, res, req } = ctx;
   const { operation, id, data, page, limit, search, emp_id, head_id, quantity, date } = args;
-          const { ProductionEntryService } = require('./domains/transactions/production-entry/service');
+          const { ProductionEntryService } = require('../domains/transactions/production-entry/service');
           const service = new ProductionEntryService(primaryDb);
           
           if (operation === 'list') {

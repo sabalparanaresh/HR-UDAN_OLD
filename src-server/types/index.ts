@@ -123,6 +123,14 @@ export interface DbSalaryHead {
   allocation_type?: string;
 }
 
+export interface DbAttendancePunch {
+  id?: number;
+  attendance_log_id: number;
+  punch_time: string;
+  punch_type: string;
+  device_id?: string;
+}
+
 export interface DbAttendanceLog {
   id?: number;
   emp_id: number;

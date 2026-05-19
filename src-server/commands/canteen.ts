@@ -113,15 +113,17 @@ export const calculateCanteenDeductions: CommandHandler = (ctx, args) => {
             // Auto update rules before calculating deductions
             recalculateCanteenRules(db);
 
-            const punches = db.prepare('SELECT * FROM canteen_punches WHERE punch_time LIKE ?').all(`${month}%`) as any[];
+            const punches = db.prepare('SELECT * FROM canteen_punches WHERE punch_time LIKE ? ORDER BY punch_time ASC').all(`${month}%`) as any[];
             const windows = db.prepare('SELECT * FROM canteen_time_windows').all() as any[];
             const benefits = db.prepare('SELECT b.*, r.discount_rate, r.dish_rate FROM canteen_employee_benefits b LEFT JOIN canteen_rules r ON b.rule_id = r.id').all() as any[];
             const config = db.prepare('SELECT * FROM canteen_config ORDER BY id DESC LIMIT 1').get() as any;
 
             const empDeductions: Record<number, { count: number, total: number }> = {};
+            const consumedMeals = new Set<string>(); // Set of "empId-dateStr-windowId"
 
             for (const punch of punches) {
               const punchTimeStr = punch.punch_time;
+              const datePart = punchTimeStr.split(' ')[0] || punchTimeStr.split('T')[0];
               const timePart = punchTimeStr.split(' ')[1] || punchTimeStr.split('T')[1] || punchTimeStr;
               const [h, m] = timePart.split(':').map(Number);
               const punchTotalMinutes = h * 60 + m;
@@ -142,15 +144,35 @@ export const calculateCanteenDeductions: CommandHandler = (ctx, args) => {
                 }
               }
 
-              if (!isValid) continue;
+              if (!isValid || windowId === null) continue;
+
+              // Check if already consumed in this period on this day
+              const consumptionKey = `${punch.emp_id}-${datePart}-${windowId}`;
+              if (consumedMeals.has(consumptionKey)) continue;
+              consumedMeals.add(consumptionKey);
 
               const benefit = benefits.find(b => b.emp_id === punch.emp_id);
               let dishRate = config ? config.dish_rate : 50;
               let discountRate = 0;
 
               if (benefit) {
-                  dishRate = benefit.dish_rate || dishRate;
-                  discountRate = benefit.discount_rate || 0;
+                  if (benefit.is_manual_override && benefit.rate_override !== null) {
+                      dishRate = benefit.rate_override;
+                      discountRate = 0;
+                  } else {
+                      dishRate = benefit.dish_rate ?? dishRate;
+                      discountRate = benefit.discount_rate ?? 0;
+                  }
+                  
+                  if (benefit.benefit_type === 'Free') {
+                     dishRate = 0;
+                     discountRate = 0;
+                  } else if (benefit.benefit_type === 'Discounted') {
+                     // Applied above
+                  } else {
+                     // Full Deduction (no discount)
+                     discountRate = 0;
+                  }
               }
               const finalRate = Math.max(0, dishRate - discountRate);
 
@@ -164,8 +186,34 @@ export const calculateCanteenDeductions: CommandHandler = (ctx, args) => {
             const results = Object.keys(empDeductions).map(empId => ({
                emp_id: Number(empId),
                total_deduction: empDeductions[Number(empId)].total,
-               punch_count: empDeductions[Number(empId)].count
+               punch_count: empDeductions[Number(empId)].count,
+               month
             }));
+            
+            // Save to cache table
+            const checkCacheStmt = db.prepare('SELECT id FROM canteen_deductions_cache WHERE emp_id = ? AND month = ?');
+            const insertCacheStmt = db.prepare(`
+              INSERT INTO canteen_deductions_cache (emp_id, month, total_deduction, consumption_count)
+              VALUES (?, ?, ?, ?)
+            `);
+            const updateCacheStmt = db.prepare(`
+              UPDATE canteen_deductions_cache SET 
+                total_deduction = ?,
+                consumption_count = ?
+              WHERE emp_id = ? AND month = ?
+            `);
+            
+            const transaction = db.transaction(() => {
+               for (const res of results) {
+                  const existing = checkCacheStmt.get(res.emp_id, res.month);
+                  if (existing) {
+                    updateCacheStmt.run(res.total_deduction, res.punch_count, res.emp_id, res.month);
+                  } else {
+                    insertCacheStmt.run(res.emp_id, res.month, res.total_deduction, res.punch_count);
+                  }
+               }
+            });
+            transaction();
 
             res.json({ results });
           } catch(err: any) {

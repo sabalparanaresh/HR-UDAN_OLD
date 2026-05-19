@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import Database from 'better-sqlite3';
 
-export function auditMiddleware(db: Database) {
+export function auditMiddleware(db: Database.Database) {
   return (req: Request, res: Response, next: NextFunction) => {
     const originalSend = res.send;
     res.send = function (body: any) {

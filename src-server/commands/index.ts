@@ -18,6 +18,17 @@ import * as config from './config.js';
 import * as reports from './reports.js';
 
 export const COMMAND_MAP: Record<string, CommandHandler> = {
+  // Loans
+  'get_loan_applications': loans.getLoanApplications,
+  'calculate_loan_eligibility': loans.calculateLoanEligibility,
+  'check_active_loans': loans.checkActiveLoans,
+  'create_loan_application': loans.createLoanApplication,
+  'override_and_approve_loan': loans.overrideAndApproveLoan,
+  'update_loan_status': loans.updateLoanStatus,
+  'generate_amortisation_schedule': loans.generateAmortisationSchedule,
+  'get_loan_amortization': loans.getLoanAmortization,
+  'update_emi_dynamic': loans.updateEmiDynamic,
+
   // Statutory
   'get_statutory_settings': statutory.getStatutorySettings,
   'list_statutory_settings': statutory.listStatutorySettings,
@@ -51,6 +62,10 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   'get_cash_transactions': financials.getCashTransactions,
   'get_canteen_master_data': canteen.getCanteenMasterData,
   'get_canteen_transactions': canteen.getCanteenTransactions,
+  'update_canteen_override': canteen.updateCanteenOverride,
+  'calculate_canteen_deductions': canteen.calculateCanteenDeductions,
+  'sync_canteen_punches': canteen.syncCanteenPunches,
+  'bulk_save_canteen_punches': canteen.bulkSaveCanteenPunches,
   'get_attendance_logs': attendance.getAttendanceLogs,
   'export_final_payroll': payroll.exportFinalPayroll,
   'handle_reset_password': (ctx, args) => {
@@ -59,7 +74,7 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
     const new_password = args.new_password || args.newPassword || args.resetNewPassword;
     if (!username || !new_password) return res.status(400).json({ error: 'Username and new password are required' });
     bcrypt.hash(new_password, 10).then((hash: string) => {
-       const result = primaryDb.prepare('UPDATE users SET password = ? WHERE username = ?').run(hash, username);
+       const result = primaryDb.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(hash, username);
        if (result.changes === 0) return res.status(404).json({ error: 'User not found' });
        res.json({ status: 'success' });
     });
@@ -89,7 +104,15 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   'search_employees': employee.searchEmployees,
   'get_p_salary_details_for_k': employee.getPSalaryDetailsForK,
   'save_p_salary_details_for_k': employee.savePSalaryDetailsForK,
+  'get_next_employee_code': employee.getNextEmployeeCode,
   'sync_employee_to_pakka': employee.syncEmployeeToPakka,
+  'process_waterfall_distribution': employee.processWaterfallDistribution,
+  'get_next_rokda_token': rokda.getNextRokdaToken,
+  'save_mis_voucher': rokda.saveMisVoucher,
+  'get_asset_deposit_data': employee.getAssetDepositData,
+  'save_asset': employee.saveAsset,
+  'save_deposit': employee.saveDeposit,
+  'return_asset': employee.returnAsset,
 
   // Attendance
   'fetch_biometric_logs': attendance.fetchBiometricLogs,
@@ -98,13 +121,18 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   'generate_ghost_punches': attendance.generateGhostPunches,
   'process_attendance': attendance.processAttendance,
   'bulk_attendance_v2': attendance.bulkAttendanceV2,
+  'cancel_bulk_attendance': attendance.cancelBulkAttendance,
+  'get_attendance_punches': attendance.getAttendancePunches,
   'resolve_attendance_anomalies': attendance.resolveAttendanceAnomalies,
   'get_attendance_anomalies': attendance.getAttendanceAnomalies,
 
   // Master Data
   'get_master_data': masterData.getMasterData,
+  'get_dept_settings': masterData.getDeptSettings,
+  'get_dept_standard_rates': masterData.getDeptStandardRates,
   'get_pincode_records': masterData.getPincodeRecords,
   'bulk_bank_import': masterData.bulkBankImport,
+  'bulk_bank_master_upsert': masterData.bulkBankMasterUpsert,
   'bulk_pincode_upsert': masterData.bulkPincodeUpsert,
   'get_ogd_records': masterData.getOgdRecords,
   'get_ogd_bank_list': masterData.getOgdBankList,
@@ -116,6 +144,7 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
 
   // CRUD
   'master_crud': masterData.masterCrud,
+  'get_master_usage': masterData.getMasterUsage,
   'transaction_crud': crud.transactionCrud,
   'save_daily_mis_batch': crud.saveDailyMisBatch,
   'get_transaction_history': crud.getTransactionHistory,
@@ -127,6 +156,7 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   'get_analytic_data': reports.getAnalyticData,
   'sync_k_to_p': reports.syncKToP,
   'get_attendance_analytics': reports.getAttendanceAnalytics,
+  'get_historical_attendance_analytics': reports.getHistoricalAttendanceAnalytics,
   'get_payroll_analytics': reports.getPayrollAnalytics,
   'get_audit_analytics': reports.getAuditAnalytics,
   'get_compliance_analytics': reports.getComplianceAnalytics,

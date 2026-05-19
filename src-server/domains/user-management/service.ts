@@ -1,6 +1,6 @@
 import { Database } from 'better-sqlite3';
 import { UserManagementRepository } from './repository';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 export class UserManagementService {
     private repo: UserManagementRepository;
@@ -21,7 +21,7 @@ export class UserManagementService {
     async createUser(data: any, currentUser: any) {
         if (data.password) {
             data.password_hash = await bcrypt.hash(data.password, 10);
-            data.password = data.password_hash; // legacy
+            delete data.password;
         }
         const id = this.repo.createUser(data);
         this.repo.logAudit('USER_CREATED', id.toString(), `Created user ${data.username}`, currentUser.username);
@@ -39,7 +39,7 @@ export class UserManagementService {
 
         if (data.password) {
             data.password_hash = await bcrypt.hash(data.password, 10);
-            data.password = data.password_hash; // legacy
+            delete data.password;
         }
         
         this.repo.updateUser(id, data);

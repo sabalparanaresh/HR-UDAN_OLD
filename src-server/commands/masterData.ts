@@ -5,6 +5,7 @@ import { Mapper } from '../utils/mapper.js';
 import { mapKeys, toSnakeCase, toCamelCase, sanitizeData } from '../utils/helpers.js';
 import { logError } from '../utils/logger.js';
 import { isKConnected } from '../utils/syncCircuitBreaker.js';
+import { recalculateCanteenRules } from '../utils/canteen.js';
  
 const conflictTargets: Record<string, string | string[]> = {
   employees: 'emp_code',
@@ -64,6 +65,69 @@ export const getMasterData: CommandHandler = (ctx, args) => {
       categories: [], classes: [], designations: [], machines: [], shifts: [],
       holidays: [],
     });
+  }
+};
+
+export const bulkBankMasterUpsert: CommandHandler = (ctx, args) => {
+  const { primaryDb, statutoryDb, res } = ctx;
+  const { records, moduleType } = args;
+  const module_type = moduleType || 'K';
+  const db = module_type === 'P' ? statutoryDb : primaryDb;
+
+  if (!records || records.length === 0) return res.json({ status: 'success' });
+
+  let syncCount = 0;
+
+  try {
+    const sql = `
+      INSERT INTO banks (ifsc, bank_name, branch, sync_status, updated_at) 
+      VALUES (?, ?, ?, 'IMPORT', CURRENT_TIMESTAMP)
+      ON CONFLICT(ifsc) DO UPDATE SET
+        bank_name = excluded.bank_name,
+        branch = excluded.branch,
+        sync_status = 'IMPORT',
+        updated_at = CURRENT_TIMESTAMP
+    `;
+    const stmt = db.prepare(sql);
+    
+    // Fallback search stmt if ifsc isn't provided but bank_name is, though frontend mandates IFSC now.
+    // If backend wanted strictly 'batch upsert logic based on unique field bank_name', we could adapt the SQL
+    // to do exact lookup, but sqlite UPSET requires UNIQUE constraint on ON CONFLICT columns.
+
+    db.transaction(() => {
+      records.forEach((rec: any) => {
+        // Enforce required data fallback if ever
+        const ifscVal = String(rec.ifsc || '').toUpperCase().trim();
+        const nameVal = rec.bank_name || 'Unknown Bank';
+        const branchVal = rec.branch || '';
+        
+        stmt.run(ifscVal, nameVal, branchVal);
+        syncCount++;
+      });
+    })();
+
+    // Mirror to statutoryDb if K module
+    if (module_type === 'K') {
+      try {
+        const statutoryStmt = statutoryDb.prepare(sql);
+        statutoryDb.transaction(() => {
+          records.forEach((rec: any) => {
+            statutoryStmt.run(
+              String(rec.ifsc || '').toUpperCase().trim(),
+              rec.bank_name || 'Unknown Bank',
+              rec.branch || ''
+            );
+          });
+        })();
+      } catch (mirrorErr) {
+        logError(statutoryDb, 'WARN', '[Mirror Sync] Failed to mirror bulk bank master upsert', mirrorErr);
+      }
+    }
+
+    res.json({ status: 'success', syncCount });
+  } catch (err: any) {
+    logError(db, 'ERROR', 'bulk_bank_master_upsert error', err);
+    res.status(500).json({ error: err.message });
   }
 };
 
@@ -140,13 +204,18 @@ function syncEmployeeToP(primaryDb: any, statutoryDb: any, empId: number, fromQu
     let statutory_wage_amount = kEmp.wage_amount;
     const wage_type = kEmp.wage_type;
     
-    // Statutory Normalization based on K wage_type
-    if (wage_type === 'Daily' || wage_type === 'Piece-rate') {
-       statutory_wage_amount = (kEmp.wage_amount || 0) * 26;
+    // If statutory wage is specifically inputted, use it directly (skip conversion)
+    if (kEmp.statutory_wage_amount && kEmp.statutory_wage_amount > 0) {
+       statutory_wage_amount = kEmp.statutory_wage_amount;
+    } else {
+       if (wage_type === 'Daily' || wage_type === 'Piece-rate') {
+          statutory_wage_amount = (kEmp.wage_amount || 0) * 26;
+       }
     }
 
     const existingP = statutoryDb.prepare("SELECT * FROM employees WHERE id = ?").get(empId);
-    const pSlabId = existingP ? existingP.slab_id : null;
+    // Prefer the explicit slab_id from K module if set, otherwise fallback to existing P slab_id
+    const pSlabId = kEmp.slab_id || (existingP ? existingP.slab_id : null);
     let basic = existingP ? existingP.basic_salary : 0;
     let hra = existingP ? existingP.hra : 0;
     let conv = existingP ? existingP.conveyance : 0;
@@ -198,6 +267,8 @@ function syncEmployeeToP(primaryDb: any, statutoryDb: any, empId: number, fromQu
     
     const getPVal = (c: string) => {
       if (c === 'statutory_wage_amount') return statutory_wage_amount;
+      if (c === 'wage_amount') return statutory_wage_amount;
+      if (c === 'wage_type') return (kEmp.statutory_wage_type || kEmp.wage_type);
       if (c === 'slab_id') return pSlabId;
       if (c === 'basic_salary') return basic;
       if (c === 'hra') return hra;
@@ -236,9 +307,9 @@ export const masterCrud: CommandHandler = (ctx, args) => {
       let processed = 0;
       for (const item of queue) {
          try {
-           const success = syncEmployeeToP(primaryDb, statutoryDb, item.emp_id, true);
+           const success = syncEmployeeToP(primaryDb, statutoryDb, (item as any).emp_id, true);
            if (success) {
-               primaryDb.prepare("UPDATE employee_sync_queue SET status = 'SUCCESS' WHERE id = ?").run(item.id);
+               primaryDb.prepare("UPDATE employee_sync_queue SET status = 'SUCCESS' WHERE id = ?").run((item as any).id);
                processed++;
            }
          } catch(e) {}
@@ -581,6 +652,14 @@ export const masterCrud: CommandHandler = (ctx, args) => {
           if (module_type === 'K' && table_name === 'employees' && result.lastInsertRowid) {
              syncEmployeeToP(primaryDb, statutoryDb, Number(result.lastInsertRowid));
           }
+          
+          if (['employees', 'canteen_rules'].includes(table_name) && result.lastInsertRowid) {
+            const empId = table_name === 'employees' ? Number(result.lastInsertRowid) : undefined;
+            setTimeout(() => {
+              try { recalculateCanteenRules(primaryDb, empId); } catch(e){}
+              try { recalculateCanteenRules(statutoryDb, empId); } catch(e){}
+            }, 100);
+          }
         }
       })();
       res.json({ status: 'success', ids: results });
@@ -659,6 +738,13 @@ export const masterCrud: CommandHandler = (ctx, args) => {
 
       if (module_type === 'K' && table_name === 'employees') {
         syncEmployeeToP(primaryDb, statutoryDb, Number(id));
+      }
+      
+      if (['employees', 'canteen_rules'].includes(table_name)) {
+        setTimeout(() => {
+          try { recalculateCanteenRules(primaryDb, table_name === 'employees' ? Number(id) : undefined); } catch(e){}
+          try { recalculateCanteenRules(statutoryDb, table_name === 'employees' ? Number(id) : undefined); } catch(e){}
+        }, 100);
       }
       
       res.json({ status: 'success' });
@@ -1027,11 +1113,11 @@ export const saveRokdaVoucher: CommandHandler = (ctx, args) => {
         INSERT INTO rokda_vouchers (voucher_date, department_id, shift, reporting_employee_id, authorizer_id, total_count, total_amount)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
-      const result = stmt.run(voucher.date, voucher.department_id, voucher.shift, voucher.reporting_employee_id, voucher.authorizer_id, voucher.total_count, voucher.total_amount);
+      const result = stmt.run(voucher.voucher_date || voucher.date, voucher.department_id, voucher.shift, voucher.reporting_employee_id, voucher.authorizer_id, voucher.total_count, voucher.total_amount);
       const voucherId = result.lastInsertRowid;
-      const itemStmt = db.prepare(`INSERT INTO rokda_voucher_entries (voucher_id, emp_id, amount, remarks) VALUES (?, ?, ?, ?)`);
+      const itemStmt = db.prepare(`INSERT INTO rokda_entries (voucher_id, token_code, worker_name, designation, in_time, out_time, amount) VALUES (?, ?, ?, ?, ?, ?, ?)`);
       for (const entry of entries) {
-        itemStmt.run(voucherId, entry.emp_id, entry.amount, entry.remarks);
+        itemStmt.run(voucherId, entry.token_code, entry.worker_name, entry.designation, entry.in_time, entry.out_time, entry.amount);
       }
     })();
     res.json({ status: 'success' });

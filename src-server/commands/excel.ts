@@ -86,7 +86,7 @@ export const distributeReport: CommandHandler = async (ctx, args) => {
                VALUES (?, ?, ?, ?, ?, ?, ?)
             `).run(logId, 'reports', reportName || 'custom_report', actionType, details, user_id || 'system', new Date().toISOString());
 
-            // If we are simulating saving to a specific path using Node fs (when running as Tauri backend)
+            // Simulated saving via Node fs
             const resultStatus = 'success';
             let message = '';
             

@@ -11,7 +11,7 @@ export const SCHEMAS = [
     name TEXT,
     username TEXT UNIQUE,
     password_hash TEXT,
-    password TEXT, -- Legacy compatibility
+    password TEXT,
     role_id INTEGER,
     status TEXT DEFAULT 'ACTIVE',
     login_attempts INTEGER DEFAULT 0,
@@ -541,6 +541,7 @@ export const SCHEMAS = [
   `CREATE TABLE IF NOT EXISTS leave_configurations (id INTEGER PRIMARY KEY AUTOINCREMENT, leave_name TEXT, credit_type TEXT, leave_value REAL, multiplier REAL, min_attendance_threshold REAL, min_service_requirement_value REAL, min_service_requirement_unit TEXT, credit_trigger TEXT, adjustment_priority INTEGER, status INTEGER)`,
   `CREATE TABLE IF NOT EXISTS arrears (id INTEGER PRIMARY KEY AUTOINCREMENT, emp_id TEXT, source_month TEXT, target_month TEXT, arrear_amount REAL, remarks TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
   `CREATE TABLE IF NOT EXISTS attendance_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, emp_id INTEGER, emp_code TEXT, emp_name TEXT, department_name TEXT, designation_name TEXT, shift_name TEXT, shift_id INTEGER, machine_name TEXT, date TEXT, punch_in TEXT, punch_out TEXT, total_time_mins INTEGER, worked_mins INTEGER, outside_mins INTEGER, attendance_value REAL, status TEXT, is_missed_punch INTEGER, blacklist_status INTEGER, punches TEXT, applied_shift_id INTEGER, origin TEXT DEFAULT 'K_NORMAL')`,
+  `CREATE TABLE IF NOT EXISTS attendance_punches (id INTEGER PRIMARY KEY AUTOINCREMENT, attendance_log_id INTEGER, punch_time TEXT, punch_type TEXT, device_id TEXT, FOREIGN KEY(attendance_log_id) REFERENCES attendance_logs(id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS loan_applications (id INTEGER PRIMARY KEY AUTOINCREMENT, application_date TEXT, emp_id INTEGER, loan_type_id INTEGER, loan_amount REAL, no_of_emi INTEGER, emi_amount REAL, start_month_year TEXT, payment_mode TEXT, guarantor_id INTEGER, reason TEXT, remarks TEXT, status TEXT DEFAULT 'PENDING')`,
   `CREATE TABLE IF NOT EXISTS loan_amortisation (id INTEGER PRIMARY KEY AUTOINCREMENT, loan_app_id INTEGER, emi_no INTEGER, month_year TEXT, planned_amount REAL, actual_paid_amount REAL, status TEXT, payment_type TEXT, transaction_ref TEXT, remarks TEXT, authorised_by TEXT)`,
   `CREATE TABLE IF NOT EXISTS grievance_categories (
@@ -859,6 +860,7 @@ export const SCHEMAS = [
   `CREATE INDEX IF NOT EXISTS idx_salary_transactions_month ON salary_transactions(salary_month_year)`,
   `CREATE INDEX IF NOT EXISTS idx_attendance_logs_emp ON attendance_logs(emp_id)`,
   `CREATE INDEX IF NOT EXISTS idx_attendance_logs_date ON attendance_logs(date)`,
+  `CREATE INDEX IF NOT EXISTS idx_attendance_punches_log_id ON attendance_punches(attendance_log_id)`,
   `CREATE INDEX IF NOT EXISTS idx_payroll_emp_month ON payroll(emp_id, month)`,
   `CREATE INDEX IF NOT EXISTS idx_final_payroll_month ON final_payroll(month_year)`,
   `CREATE INDEX IF NOT EXISTS idx_final_payroll_emp_code ON final_payroll(emp_code)`,
@@ -904,9 +906,7 @@ export const SCHEMAS = [
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(date, emp_id)
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_daily_mis_emp_id ON daily_mis_entries(emp_id)`,
   `CREATE INDEX IF NOT EXISTS idx_daily_mis_date ON daily_mis_entries(date)`,
-  `CREATE INDEX IF NOT EXISTS idx_daily_mis_date_emp ON daily_mis_entries(date, emp_id)`,
   `CREATE INDEX IF NOT EXISTS idx_daily_mis_emp_date ON daily_mis_entries(emp_id, date)`,
   `CREATE TABLE IF NOT EXISTS employee_p_salary_details (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -935,7 +935,58 @@ export const SCHEMAS = [
     message TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(employee_id) REFERENCES employees(id)
-  )`
+  )`,
+  `CREATE TABLE IF NOT EXISTS report_data_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE,
+    name TEXT,
+    module_type TEXT,
+    icon TEXT,
+    sort_order INTEGER,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS report_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE,
+    name TEXT,
+    data_source_id INTEGER,
+    module_type TEXT,
+    sort_order INTEGER,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(data_source_id) REFERENCES report_data_sources(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS predefined_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE,
+    name TEXT,
+    group_id INTEGER,
+    report_key TEXT,
+    version TEXT,
+    supports_pdf INTEGER DEFAULT 1,
+    supports_excel INTEGER DEFAULT 1,
+    supports_word INTEGER DEFAULT 1,
+    module_type TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(group_id) REFERENCES report_groups(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS report_filters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id INTEGER,
+    filter_key TEXT,
+    filter_label TEXT,
+    filter_type TEXT,
+    data_source TEXT,
+    is_required INTEGER DEFAULT 0,
+    sort_order INTEGER,
+    FOREIGN KEY(report_id) REFERENCES predefined_reports(id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_rds_module ON report_data_sources(module_type)`,
+  `CREATE INDEX IF NOT EXISTS idx_rg_data_source ON report_groups(data_source_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_pr_group ON predefined_reports(group_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rf_report ON report_filters(report_id)`
 ];
 
 export const MIGRATIONS = [
@@ -946,25 +997,32 @@ export const MIGRATIONS = [
   `ALTER TABLE company_config ADD COLUMN signatories TEXT`,
   `ALTER TABLE company_config ADD COLUMN payroll_adjustment_head TEXT`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_emp_date ON attendance_logs(emp_id, date)`,
+  `CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id_page_key ON role_permissions(role_id, page_key)`,
   `ALTER TABLE attendance_logs ADD COLUMN applied_shift_id INTEGER`,
   `CREATE INDEX IF NOT EXISTS idx_earnings_salary_period ON earnings (salary_year, salary_month)`,
   `CREATE INDEX IF NOT EXISTS idx_earnings_date ON earnings (transaction_date)`,
   `ALTER TABLE salary_transactions ADD COLUMN k_ref_id INTEGER`,
+  `DROP TRIGGER IF EXISTS trg_employees_insert`,
   `CREATE TRIGGER IF NOT EXISTS trg_employees_insert AFTER INSERT ON employees
    BEGIN
-     INSERT INTO sync_queue (entity_type, entity_id, operation)
+     INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation)
      VALUES ('employees', NEW.id, 'INSERT');
    END;`,
+  `DROP TRIGGER IF EXISTS trg_employees_update`,
   `CREATE TRIGGER IF NOT EXISTS trg_employees_update AFTER UPDATE ON employees
    BEGIN
      INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation)
      VALUES ('employees', NEW.id, 'UPDATE');
    END;`,
+  `DROP TRIGGER IF EXISTS trg_salary_tx_insert`,
   `CREATE TRIGGER IF NOT EXISTS trg_salary_tx_insert AFTER INSERT ON salary_transactions
    BEGIN
-     INSERT INTO sync_queue (entity_type, entity_id, operation)
+     INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation)
      VALUES ('salary_transactions', NEW.id, 'INSERT');
    END;`,
+  `DROP TRIGGER IF EXISTS trg_salary_tx_update`,
   `CREATE TRIGGER IF NOT EXISTS trg_salary_tx_update AFTER UPDATE ON salary_transactions
    BEGIN
      INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation)
@@ -1138,19 +1196,45 @@ export const MIGRATIONS = [
     resolved_action TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`,
-  `CREATE TABLE IF NOT EXISTS company_payroll_rules (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    k_salary_calculation_source TEXT DEFAULT 'EMPLOYEE_MASTER',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`,
-  `INSERT OR IGNORE INTO company_payroll_rules (id, k_salary_calculation_source) VALUES (1, 'EMPLOYEE_MASTER')`,
-  `CREATE TABLE IF NOT EXISTS payroll_exceptions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    employee_id INTEGER,
-    salary_month TEXT,
-    exception_type TEXT,
-    message TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(employee_id) REFERENCES employees(id)
-  )`
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('MASTERS', 'Masters', 'ALL', 'Database', 1)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('EMPLOYEE_MASTER', 'Employee Master', 'ALL', 'Users', 2)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('ATTENDANCE', 'Attendance', 'ALL', 'Clock', 3)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('SALARY', 'Salary', 'ALL', 'Banknote', 4)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('EARNINGS_TRANS', 'Earnings Transactions', 'ALL', 'DollarSign', 5)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('DEDUCTION_TRANS', 'Deduction Transactions', 'ALL', 'CreditCard', 6)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('ADVANCE_TRANS', 'Advance Transactions', 'ALL', 'CreditCard', 7)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('LOAN_TRANS', 'Loan Transactions', 'ALL', 'Banknote', 8)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('BONUS_TRANS', 'Bonus Transactions', 'ALL', 'DollarSign', 9)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('INCENTIVE_TRANS', 'Incentive Transactions', 'ALL', 'DollarSign', 10)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('OT_TRANS', 'OT Transactions', 'ALL', 'Clock', 11)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('ARREAR_TRANS', 'Arrear Transactions', 'ALL', 'DollarSign', 12)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('PF', 'PF', 'ALL', 'FileText', 13)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('ESI', 'ESI', 'ALL', 'FileText', 14)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('PT', 'PT', 'ALL', 'FileText', 15)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('LWF', 'LWF', 'ALL', 'FileText', 16)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('GRATUITY', 'Gratuity', 'ALL', 'Briefcase', 17)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('BANKING', 'Banking', 'ALL', 'CreditCard', 18)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('MIS', 'MIS', 'ALL', 'Activity', 19)`,
+  `INSERT OR IGNORE INTO report_data_sources (code, name, module_type, icon, sort_order) VALUES ('AUDIT_LOGS', 'Audit Logs', 'ALL', 'ShieldCheck', 20)`,
+  `CREATE INDEX IF NOT EXISTS idx_salary_tx_emp_month ON salary_transactions(emp_id, salary_month_year)`,
+  `CREATE INDEX IF NOT EXISTS idx_stat_records_emp_month ON statutory_records(emp_id, month)`,
+  `CREATE INDEX IF NOT EXISTS idx_loan_app_emp_status ON loan_applications(emp_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_loan_amort_app_status ON loan_amortisation(loan_app_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_entity_date ON audit_logs(entity, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_wat_emp_date ON wage_attendance_transactions(emp_id, date)`,
+  `DROP INDEX IF EXISTS idx_daily_mis_date_emp`,
+  `DROP INDEX IF EXISTS idx_daily_mis_emp_id`,
+  `CREATE INDEX IF NOT EXISTS idx_waterfall_parent ON waterfall_logs(parent_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_waterfall_child ON waterfall_logs(child_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_grievances_emp ON grievances(employee_id, status)`,
+  `DROP TRIGGER IF EXISTS trg_users_audit_insert`,
+  `DROP TRIGGER IF EXISTS trg_users_audit_update`,
+  `DROP TRIGGER IF EXISTS trg_users_audit_delete`,
+  `DROP TRIGGER IF EXISTS trg_audit_users_insert`,
+  `DROP TRIGGER IF EXISTS trg_audit_users_update`,
+  `DROP TRIGGER IF EXISTS trg_audit_users_delete`,
+  `DROP TRIGGER IF EXISTS trg_users_k_insert`,
+  `DROP TRIGGER IF EXISTS trg_users_k_update`,
+  `DROP TRIGGER IF EXISTS trg_users_k_delete`,
+  `ALTER TABLE users DROP COLUMN password`
 ];

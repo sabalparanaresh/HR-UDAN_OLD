@@ -631,8 +631,34 @@ export const calculateKModuleWages: CommandHandler = (ctx, args) => {
   const processingTime = Date.now() - queryEndTime;
   const totalTime = Date.now() - startTime;
   
+  const exceptionCount = results.filter((r: any) => r.exception).length;
+
   console.log(`[Salary Processing] processed ${employees.length} employees using engine '${kEngineSource}'.`);
   console.log(`[Benchmark] query_time: ${queryTime}ms, processing_time: ${processingTime}ms, total_time: ${totalTime}ms`);
+
+  try {
+    const { randomUUID } = require('crypto');
+    primaryDb.prepare(`
+      INSERT INTO audit_logs (id, user_id, action, entity, entity_id, details)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      ctx.req.headers['x-user-id'] || null,
+      'PROCESS_PAYROLL_K',
+      'salary_processing',
+      month,
+      JSON.stringify({
+        engine_used: kEngineSource,
+        total_processed: employees.length,
+        total_failed: exceptionCount,
+        process_duration: totalTime,
+        query_time: queryTime,
+        processing_time: processingTime
+      })
+    );
+  } catch (e) {
+    // Ignore audit log error
+  }
 
   salaryProcessingCache.set(`${month}-K`, results);
   res.json({
@@ -990,7 +1016,7 @@ export const getProcessedPayroll: CommandHandler = (ctx, args) => {
 export const pieceRateCrud: CommandHandler = (ctx, args) => {
   const { primaryDb, statutoryDb, res, req } = ctx;
   const { operation, data, id, page, limit, search } = args;
-          const { PieceRateService } = require('./domains/piece-rate/service');
+          const { PieceRateService } = require('../domains/piece-rate/service');
           const service = new PieceRateService(primaryDb);
           
           if (operation === 'list') {

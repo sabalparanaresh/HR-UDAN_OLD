@@ -93,7 +93,7 @@ export const generateGhostPunches: CommandHandler = (ctx, args) => {
   });
 
   worker.on('error', (err) => {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: (err as any).message });
   });
 };
 
@@ -183,107 +183,95 @@ export const processAttendance: CommandHandler = (ctx, args) => {
   res.json({ status: 'success' });
 };
 
+let activeBulkWorker: Worker | null = null;
+
 export const bulkAttendanceV2: CommandHandler = (ctx, args) => {
-  const { primaryDb, statutoryDb, res } = ctx;
+  const { res } = ctx;
   const { fromDate, toDate, filters, moduleType } = args;
+
+  const dbPath = moduleType === 'P' ? 'data/statutory.db' : 'data/primary.db';
+
+  if (activeBulkWorker) {
+    activeBulkWorker.terminate();
+    activeBulkWorker = null;
+  }
+
+  import('../legacyRouter.js').then(({ emitEvent }) => {
+    emitEvent('bulk-attendance-progress', { processed: 0, total: 100, percentage: 0 });
+
+    const worker = new Worker(path.resolve('src-server/workers/bulkAttendanceWorker.ts'), {
+      execArgv: ['--import', 'tsx'],
+      workerData: {
+        dbPath,
+        fromDate,
+        toDate,
+        filters
+      }
+    });
+    
+    activeBulkWorker = worker;
+
+    // Return immediately to client
+    if (!res.headersSent) {
+      res.json({ status: 'started' });
+    }
+
+    worker.on('message', (msg) => {
+      if (msg.type === 'progress') {
+        emitEvent('bulk-attendance-progress', msg.data);
+      } else if (msg.type === 'done') {
+        activeBulkWorker = null;
+        emitEvent('bulk-attendance-complete', msg.data);
+      } else if (msg.type === 'error') {
+        activeBulkWorker = null;
+        emitEvent('bulk-attendance-error', { error: msg.error });
+      }
+    });
+
+    worker.on('error', (err) => {
+      activeBulkWorker = null;
+      emitEvent('bulk-attendance-error', { error: (err as any).message });
+    });
+
+    worker.on('exit', (code) => {
+      activeBulkWorker = null;
+      if (code !== 0) {
+        emitEvent('bulk-attendance-error', { error: `Worker stopped with exit code ${code}` });
+      }
+    });
+  }).catch(err => {
+    res.status(500).json({ error: 'Failed to initialize worker' });
+  });
+};
+
+export const getAttendancePunches: CommandHandler = (ctx, args) => {
+  const { primaryDb, statutoryDb, res } = ctx;
+  const { fromDate, toDate, moduleType } = args;
   const db = moduleType === 'P' ? statutoryDb : primaryDb;
 
-  // 1. Identify Employees based on filters
-  let empSql = 'SELECT id, emp_code, name, department_id, designation_id, shift_id, category_id, location_id, division_id, group_id FROM employees WHERE status = 1';
-  const empParams: any[] = [];
-  
-  if (filters) {
-    const arrayFilter = (field: string, values: any) => {
-      if (Array.isArray(values) && values.length > 0) {
-        empSql += ` AND ${field} IN (${values.map(()=>'?').join(', ')})`;
-        empParams.push(...values);
-      } else if (values && typeof values === 'string') {
-        empSql += ` AND ${field} = ?`;
-        empParams.push(values);
-      }
-    };
-    arrayFilter('department_id', filters.departmentId);
-    arrayFilter('location_id', filters.locationId);
-    arrayFilter('division_id', filters.divisionId);
-    arrayFilter('group_id', filters.groupId);
-    arrayFilter('category_id', filters.categoryId);
-    arrayFilter('designation_id', filters.designationId);
-    arrayFilter('class_id', filters.classId);
+  try {
+    const stmt = db.prepare(`
+      SELECT p.id, p.attendance_log_id, p.punch_time, p.punch_type, p.device_id, 
+             l.emp_id, l.emp_code, l.emp_name, l.date 
+      FROM attendance_punches p
+      JOIN attendance_logs l ON l.id = p.attendance_log_id
+      WHERE l.date >= ? AND l.date <= ?
+      ORDER BY l.emp_id, l.date, p.punch_time ASC
+    `);
+    const punches = stmt.all(fromDate, toDate);
+    res.json({ status: 'success', data: punches });
+  } catch (e: any) {
+    res.status(500).json({ error: (e as any).message || String(e) });
   }
-  
-  const employees = db.prepare(empSql).all(...empParams) as any[];
-  
-  // 2. Fetch Shifts for mapping
-  const shifts = db.prepare('SELECT id, name, start_time, end_time, total_working_hours FROM shifts').all() as any[];
-  const shiftMap = new Map(shifts.map(s => [s.id, s]));
-  
-  // 3. Fetch Holidays to skip
-  const holidays = db.prepare('SELECT date FROM holidays WHERE status = 1').all() as any[];
-  const holidaySet = new Set(holidays.map(h => h.date));
-  
-  const results = {
-    total_records: 0,
-    skipped_missing_shift: [] as string[],
-    processed_employees: employees.length
-  };
+};
 
-  db.transaction(() => {
-    const start = new Date(fromDate);
-    const end = new Date(toDate);
-    
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      if (holidaySet.has(dateStr)) continue;
-      
-      for (const emp of employees) {
-        const shiftId = emp.shift_id;
-        if (!shiftId || !shiftMap.has(shiftId)) {
-          if (dateStr === fromDate) { 
-            results.skipped_missing_shift.push(emp.name);
-          }
-          continue;
-        }
-        
-        const shift = shiftMap.get(shiftId) as any;
-        const startTime = shift.start_time || '08:00';
-        const endTime = shift.end_time || '20:00';
-        const workingHours = shift.total_working_hours || 12.0;
-
-        const punchIn = `${dateStr}T${startTime}:00`;
-        const punchOut = `${dateStr}T${endTime}:00`;
-        const attnVal = workingHours >= 8 ? 1.0 : (workingHours >= 4 ? 0.5 : 0.0);
-
-        db.prepare(`
-          INSERT INTO attendance_logs (
-            emp_id, emp_code, emp_name, date, punch_in, punch_out, 
-            shift_id, shift_name, status, machine_name, 
-            worked_mins, total_time_mins, attendance_value, punches
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'BULK_V2', ?, ?, ?, ?)
-          ON CONFLICT(emp_id, date) DO UPDATE SET
-            punch_in = excluded.punch_in,
-            punch_out = excluded.punch_out,
-            shift_id = excluded.shift_id,
-            shift_name = excluded.shift_name,
-            status = excluded.status,
-            machine_name = excluded.machine_name,
-            worked_mins = excluded.worked_mins,
-            total_time_mins = excluded.total_time_mins,
-            attendance_value = excluded.attendance_value,
-            punches = excluded.punches
-        `).run(
-          emp.id, emp.emp_code, emp.name, dateStr, punchIn, punchOut,
-          shift.id, shift.name, attnVal > 0 ? 'PRESENT' : 'ABSENT',
-          Math.round(workingHours * 60), Math.round(workingHours * 60), attnVal,
-          JSON.stringify([{ punch_in: punchIn, punch_out: punchOut }])
-        );
-        
-        results.total_records++;
-      }
-    }
-  })();
-
-  res.json({ status: 'success', summary: results });
+export const cancelBulkAttendance: CommandHandler = (ctx, args) => {
+  if (activeBulkWorker) {
+    activeBulkWorker.postMessage({ type: 'cancel' });
+    ctx.res.json({ status: 'success', message: 'Cancellation requested' });
+  } else {
+    ctx.res.json({ status: 'success', message: 'No active worker' });
+  }
 };
 
 export const getAttendanceLogs: CommandHandler = (ctx, args) => {

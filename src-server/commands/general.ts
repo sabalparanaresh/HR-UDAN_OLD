@@ -1,6 +1,7 @@
 import { CommandHandler } from './types.js';
 import { CONFIG } from '../config.js';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 export const verifySecurityKey: CommandHandler = (ctx, args) => {
   const { key } = args;
@@ -19,7 +20,7 @@ export const handleLogin: CommandHandler = async (ctx, args) => {
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
   
   const user = primaryDb.prepare(`
-    SELECT u.id, u.username, u.name, u.password, u.role_id, r.name as role_name, r.module_scope, u.is_hidden_superadmin 
+    SELECT u.id, u.username, u.name, u.password_hash as password, u.role_id, r.name as role_name, r.module_scope, u.is_hidden_superadmin 
     FROM users u 
     LEFT JOIN roles r ON u.role_id = r.id 
     WHERE u.username = ?
@@ -44,6 +45,16 @@ export const handleLogin: CommandHandler = async (ctx, args) => {
       if (rp.can_view) permissionsMap[rp.page_key] = true;
   }
 
+  const token = jwt.sign(
+    { 
+      id: user.id, 
+      username: user.username,
+      role: user.role_name 
+    }, 
+    CONFIG.SECURITY_KEY,
+    { expiresIn: '24h' }
+  );
+
   res.json({
     id: user.id,
     username: user.username,
@@ -55,38 +66,110 @@ export const handleLogin: CommandHandler = async (ctx, args) => {
       module_scope: user.module_scope || 'NONE'
     },
     available_modules,
-    connection_status: isDisconnected ? 'DISCONNECTED' : 'CONNECTED'
+    connection_status: isDisconnected ? 'DISCONNECTED' : 'CONNECTED',
+    token
   });
 };
 
 export const userCrud: CommandHandler = async (ctx, args) => {
-  const { primaryDb, res } = ctx;
-  const { operation, data, id } = args;
+  const { primaryDb, statutoryDb, res } = ctx;
+  const { operation, data, id, moduleType } = args;
+  
+  const getModuleDatabase = (mod?: string) => {
+    return mod === 'P' ? statutoryDb : primaryDb;
+  };
+  const activeDb = getModuleDatabase(moduleType);
+
+  const handleWrite = (fn: (dbRef: any) => void) => {
+    if (moduleType === 'P') {
+      try { fn(statutoryDb); } catch(e) { throw e; }
+    } else {
+      try { fn(primaryDb); } catch(e) { throw e; }
+      try {
+        const bridge = primaryDb.prepare("SELECT state FROM bridge_state WHERE id = 1").get() as any;
+        if (bridge && bridge.state !== 'DISCONNECTED_AUDIT') {
+           fn(statutoryDb);
+        }
+      } catch (e) {
+        console.warn("Failed to write to statutory DB", e);
+      }
+    }
+  };
+
   if (operation === 'list') {
-    const rows = primaryDb.prepare('SELECT u.id, u.name, u.username, u.role_id, r.name as role_name, u.status, u.is_locked FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE IFNULL(u.is_hidden_superadmin, 0) = 0').all();
+    const rows = activeDb.prepare('SELECT u.id, u.name, u.username, u.role_id, r.name as role_name, u.status, u.is_locked FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE IFNULL(u.is_hidden_superadmin, 0) = 0').all();
     res.json(rows);
   } else if (operation === 'get_roles') {
-    const rows = primaryDb.prepare('SELECT id, name, description, module_scope FROM roles').all();
+    const rows = activeDb.prepare('SELECT id, name, description, module_scope FROM roles').all();
     res.json(rows);
   } else if (operation === 'create') {
-    if (!data.password) return res.status(400).json({ error: 'Password is required' });
-    const hash = await bcrypt.hash(data.password, 10);
-    primaryDb.prepare('INSERT INTO users (name, username, password, role_id, status) VALUES (?, ?, ?, ?, ?)')
-      .run(data.name, data.username, hash, data.role_id, data.status);
-    res.json({ status: 'success' });
-  } else if (operation === 'update') {
-    if (data.password) {
+    try {
+      if (!data.password) return res.status(400).json({ error: 'Password is required' });
       const hash = await bcrypt.hash(data.password, 10);
-      primaryDb.prepare('UPDATE users SET name = ?, username = ?, password = ?, role_id = ?, status = ? WHERE id = ?')
-        .run(data.name, data.username, hash, data.role_id, data.status, id);
-    } else {
-      primaryDb.prepare('UPDATE users SET name = ?, username = ?, role_id = ?, status = ? WHERE id = ?')
-        .run(data.name, data.username, data.role_id, data.status, id);
+      handleWrite((db) => {
+        db.prepare('INSERT INTO users (name, username, password_hash, role_id, status) VALUES (?, ?, ?, ?, ?)')
+          .run(data.name, data.username, hash, data.role_id, data.status);
+      });
+      res.json({ status: 'success' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
     }
-    res.json({ status: 'success' });
+  } else if (operation === 'update') {
+    try {
+      if (data.password) {
+        const hash = await bcrypt.hash(data.password, 10);
+        handleWrite((db) => {
+          db.prepare('UPDATE users SET name = ?, username = ?, password_hash = ?, role_id = ?, status = ? WHERE id = ?')
+            .run(data.name, data.username, hash, data.role_id, data.status, id);
+        });
+      } else {
+        handleWrite((db) => {
+          db.prepare('UPDATE users SET name = ?, username = ?, role_id = ?, status = ? WHERE id = ?')
+            .run(data.name, data.username, data.role_id, data.status, id);
+        });
+      }
+      res.json({ status: 'success' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   } else if (operation === 'delete') {
-    primaryDb.prepare('DELETE FROM users WHERE id = ?').run(id);
-    res.json({ status: 'success' });
+    try {
+      handleWrite((db) => {
+        db.prepare('DELETE FROM users WHERE id = ?').run(id);
+      });
+      res.json({ status: 'success' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  } else if (operation === 'get_role_permissions') {
+    try {
+      const rows = activeDb.prepare('SELECT * FROM role_permissions WHERE role_id = ?').all(id);
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  } else if (operation === 'update_role_permissions') {
+    try {
+      const { permissions } = data || {};
+      if (!Array.isArray(permissions)) {
+        res.status(400).json({ error: 'Invalid permissions data' });
+        return;
+      }
+      
+      handleWrite((db) => {
+        const tx = db.transaction(() => {
+          db.prepare('DELETE FROM role_permissions WHERE role_id = ?').run(id);
+          const stmt = db.prepare('INSERT INTO role_permissions (role_id, module, menu_group, page_key, can_view, can_insert, can_edit, can_delete) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+          for (const p of permissions) {
+            stmt.run(id, p.module, p.menu_group, p.page_key, p.can_view ? 1 : 0, p.can_insert ? 1 : 0, p.can_edit ? 1 : 0, p.can_delete ? 1 : 0);
+          }
+        });
+        tx();
+      });
+      res.json({ status: 'success' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   }
 };
 
@@ -140,7 +223,7 @@ export const resetPasswordWithToken: CommandHandler = async (ctx, args) => {
           if (new Date() > new Date(record.expires_at)) return res.status(400).json({ error: 'Token expired' });
           
           const hash = await bcrypt.hash(new_password, 10);
-          primaryDb.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, record.user_id);
+          primaryDb.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, record.user_id);
           primaryDb.prepare('UPDATE password_reset_tokens SET is_used = 1 WHERE token = ?').run(token);
           res.json({ status: 'success' });
           

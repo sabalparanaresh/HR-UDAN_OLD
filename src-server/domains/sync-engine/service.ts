@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 
 export class SyncEngineService {
-  constructor(private primaryDb: Database, private statutoryDb: Database) {}
+  constructor(private primaryDb: Database.Database, private statutoryDb: Database.Database) {}
 
   public isConnected(): boolean {
     const bridgeRow = this.primaryDb.prepare("SELECT state FROM bridge_state WHERE id = 1").get() as any;
@@ -15,7 +15,7 @@ export class SyncEngineService {
 
   public enqueue(entity_type: string, entity_id: number | string, operation: string, payload: any) {
     const stmt = this.primaryDb.prepare(`
-      INSERT INTO sync_queue (entity_type, entity_id, operation, payload, status)
+      INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation, payload, status)
       VALUES (?, ?, ?, ?, 'PENDING')
     `);
     stmt.run(entity_type, entity_id, operation, JSON.stringify(payload));

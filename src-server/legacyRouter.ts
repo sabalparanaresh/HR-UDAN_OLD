@@ -6,6 +6,7 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import duckdb from 'duckdb';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import { Worker } from 'worker_threads';
 import { CONFIG } from './config.js';
@@ -184,22 +185,12 @@ function syncSalaryHead(headData: any, primaryDb: any, statutoryDb: any) {
     const shouldMirror = fullHead.allocation_type !== 'K_ONLY';
 
     if (shouldMirror) {
-      const existingInP = statutoryDb.prepare('SELECT id FROM salary_heads WHERE name = ?').get(headName);
-      const syncKeys = Object.keys(fullHead).filter(k => k !== 'id' && k !== 'created_at');
-      const syncValues = syncKeys.map(k => sanitizeData(fullHead[k]));
-      
-      if (existingInP) {
-        const sSql = `UPDATE salary_heads SET ${syncKeys.map(k => `${k} = ?`).join(', ')} WHERE name = ?`;
-        statutoryDb.prepare(sSql).run(...syncValues, headName);
-      } else {
-        const sSql = `INSERT INTO salary_heads (${syncKeys.join(', ')}) VALUES (${syncKeys.map(() => '?').join(', ')})`;
-        statutoryDb.prepare(sSql).run(...syncValues);
-      }
+      primaryDb.prepare("INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('salary_heads', ?, 'UPDATE')").run(fullHead.id);
     } else {
-      statutoryDb.prepare('DELETE FROM salary_heads WHERE name = ?').run(headName);
+      primaryDb.prepare("INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('salary_heads', ?, 'DELETE')").run(fullHead.id);
     }
   } catch (err) {
-    logError(statutoryDb, 'ERROR', '[Sync] Error in syncSalaryHead', err);
+    logError(primaryDb, 'ERROR', '[Sync] Error in syncSalaryHead', err);
   }
 }
 
@@ -207,7 +198,7 @@ export function syncEarningTransactionToP(operation: 'create' | 'update' | 'dele
   if (!isKConnected(primaryDb)) return;
   try {
     if (operation === 'delete') {
-      statutoryDb.prepare('DELETE FROM salary_transactions WHERE k_ref_id = ?').run(k_tx_id);
+      primaryDb.prepare("INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('salary_transactions', ?, 'DELETE')").run(k_tx_id);
       return;
     }
 
@@ -221,60 +212,22 @@ export function syncEarningTransactionToP(operation: 'create' | 'update' | 'dele
 
     if (!tx || (tx.allocation_type !== 'KP' && tx.allocation_type !== 'STATUTORY')) {
       if (operation === 'update') {
-        // If it was changed to non-KP, we might need to delete it from P
-        statutoryDb.prepare('DELETE FROM salary_transactions WHERE k_ref_id = ?').run(k_tx_id);
+        primaryDb.prepare("INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('salary_transactions', ?, 'DELETE')").run(k_tx_id);
       }
       return;
     }
 
-    const empInP = statutoryDb.prepare("SELECT id FROM employees WHERE emp_code = ?").get(tx.emp_code) as any;
-    const headInP = statutoryDb.prepare("SELECT id FROM salary_heads WHERE name = ?").get(tx.head_name) as any;
-
-    if (!empInP || !headInP) return;
-
-    if (operation === 'create') {
-      statutoryDb.prepare(`
-        INSERT INTO salary_transactions (
-          transaction_type, date, salary_month_year, emp_id, head_id, amount, reason, remark, is_bulk_entry, k_ref_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        tx.transaction_type, tx.date, tx.salary_month_year, empInP.id, headInP.id,
-        tx.amount, tx.reason, tx.remark, tx.is_bulk_entry, k_tx_id
-      );
-    } else if (operation === 'update') {
-      // It might not exist in P if it was previously non-KP and just changed to KP,
-      // so we use UPSERT or check if it exists
-      const existing = statutoryDb.prepare("SELECT id FROM salary_transactions WHERE k_ref_id = ?").get(k_tx_id);
-      if (existing) {
-        statutoryDb.prepare(`
-          UPDATE salary_transactions 
-          SET transaction_type=?, date=?, salary_month_year=?, emp_id=?, head_id=?, amount=?, reason=?, remark=?, is_bulk_entry=?
-          WHERE k_ref_id = ?
-        `).run(
-          tx.transaction_type, tx.date, tx.salary_month_year, empInP.id, headInP.id,
-          tx.amount, tx.reason, tx.remark, tx.is_bulk_entry, k_tx_id
-        );
-      } else {
-        statutoryDb.prepare(`
-          INSERT INTO salary_transactions (
-            transaction_type, date, salary_month_year, emp_id, head_id, amount, reason, remark, is_bulk_entry, k_ref_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          tx.transaction_type, tx.date, tx.salary_month_year, empInP.id, headInP.id,
-          tx.amount, tx.reason, tx.remark, tx.is_bulk_entry, k_tx_id
-        );
-      }
-    }
+    primaryDb.prepare("INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('salary_transactions', ?, ?)").run(k_tx_id, operation === 'create' ? 'INSERT' : 'UPDATE');
   } catch (err) {
-    logError(statutoryDb, 'ERROR', '[Sync] Error in syncEarningTransactionToP', err);
+    logError(primaryDb, 'ERROR', '[Sync] Error in syncEarningTransactionToP', err);
   }
 }
 
 
-// --- SSE Event System for Tauri Emulator ---
+// --- SSE Event System for Client Push Updates ---
 let eventClients: { id: number; res: any }[] = [];
 const salaryProcessingCache = new Map<string, any[]>();
-const emitEvent = (event: string, payload: any) => {
+export const emitEvent = (event: string, payload: any) => {
   const data = JSON.stringify({ event, payload });
   eventClients.forEach(c => c.res.write(`data: ${data}\n\n`));
 };
@@ -336,31 +289,29 @@ function setupErrorHandling(app: express.Application, server: any, db: any) {
 }
 
 export async function startLegacyServer(app: any, isVite: boolean) {
-  
-  
   const dbState = { isReady: false };
-
-  // Start listening immediately to prevent platform "Starting Server" HTML response
-  const server = app.listen(3000, '0.0.0.0', () => {
-    console.log(`Tauri-Emulator Server running on http://localhost:${3000}`);
-  });
 
   await initializeApp(app);
   setupSSE(app);
 
-  const primaryDb = new Database('data/primary.db', { timeout: 5000 });
-  const statutoryDb = new Database('data/statutory.db', { timeout: 5000 });
+  if (!fs.existsSync(path.join(process.cwd(), 'data'))) {
+    fs.mkdirSync(path.join(process.cwd(), 'data'), { recursive: true });
+  }
 
-  // DuckDB initialization will be called after migrations
-  // DuckDBAnalyticsRepo.init();
+  const primaryDb = new Database('data/primary.db', { timeout: 15000 });
+  const statutoryDb = new Database('data/statutory.db', { timeout: 15000 });
 
-
-  primaryDb.pragma('journal_mode = WAL');
-  statutoryDb.pragma('journal_mode = WAL');
-  primaryDb.pragma('synchronous = NORMAL');
-  statutoryDb.pragma('synchronous = NORMAL');
+  const { SQLiteOptimizer } = await import('./db/optimizer.js');
+  SQLiteOptimizer.applyEnterprisePragmas(primaryDb);
+  SQLiteOptimizer.applyEnterprisePragmas(statutoryDb);
+  
+  // Explicitly require foreign keys
   primaryDb.pragma('foreign_keys = ON');
   statutoryDb.pragma('foreign_keys = ON');
+
+  // Enable query profiling for slow queries (>200ms)
+  SQLiteOptimizer.enableSlowQueryLog(primaryDb, 200);
+  SQLiteOptimizer.enableSlowQueryLog(statutoryDb, 200);
   
   setInterval(() => {
     try {
@@ -401,90 +352,125 @@ export async function startLegacyServer(app: any, isVite: boolean) {
     }
 
     // RUN MIGRATIONS
-    for (const migration of MIGRATIONS) {
-      try {
-        primaryDb.exec(migration);
-      } catch (err: any) {
-        if (!err.message?.includes('duplicate column name') && !err.message?.includes('already exists')) {
-          console.error('[Database Migration Failure] Fatal error during primary schema migration:', err);
-          process.exit(1);
+    primaryDb.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    statutoryDb.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    for (let i = 0; i < MIGRATIONS.length; i++) {
+      const migration = MIGRATIONS[i];
+      const primaryApplied = primaryDb.prepare('SELECT 1 FROM schema_migrations WHERE version = ?').get(i);
+      if (!primaryApplied) {
+        try {
+          primaryDb.exec(migration);
+        } catch (err: any) {
+          if (!err.message?.includes('duplicate column name') && !err.message?.includes('already exists') && !err.message?.includes('no such column')) {
+            console.error('[Database Migration Failure] Fatal error during primary schema migration at version ' + i + ':', err, migration);
+            process.exit(1);
+          }
         }
+        primaryDb.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(i);
       }
-      try {
-        statutoryDb.exec(migration);
-      } catch (err: any) {
-        if (!err.message?.includes('duplicate column name') && !err.message?.includes('already exists')) {
-          console.error('[Database Migration Failure] Fatal error during statutory schema migration:', err);
-          process.exit(1);
+
+      const statutoryApplied = statutoryDb.prepare('SELECT 1 FROM schema_migrations WHERE version = ?').get(i);
+      if (!statutoryApplied) {
+        try {
+          statutoryDb.exec(migration);
+        } catch (err: any) {
+          if (!err.message?.includes('duplicate column name') && !err.message?.includes('already exists') && !err.message?.includes('no such column')) {
+            console.error('[Database Migration Failure] Fatal error during statutory schema migration at version ' + i + ':', err, migration);
+            process.exit(1);
+          }
         }
+        statutoryDb.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(i);
       }
     }
 
     // DYNAMIC AUDIT TRIGGERS FOR BOTH MODULES
-    const setupAuditTriggers = (db: Database, dbName: string) => {
+    const setupAuditTriggers = (db: Database.Database, dbName: string) => {
       try {
         const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('audit_log', 'audit_amendment_log', 'sync_log', 'sync_queue', 'employee_sync_queue', 'payroll_lock', 'system_logs')").all() as {name: string}[];
-        for (const t of tables) {
-          const table = t.name;
-          const columnsInfo = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
-          if (!columnsInfo.length) continue;
+        
+        let index = 0;
+        const processChunk = () => {
+          const chunk = tables.slice(index, index + 5);
+          if (chunk.length === 0) return;
           
-          let pkColumn = columnsInfo.find(c => c.pk)?.name || 'id';
-          if (table === 'leave_balances') pkColumn = 'emp_id'; // compound pk handling workaround
+          db.exec('BEGIN TRANSACTION');
+          for (const t of chunk) {
+            const table = t.name;
+            const columnsInfo = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
+            if (!columnsInfo.length) continue;
+            
+            let pkColumn = columnsInfo.find(c => c.pk === 1)?.name;
+            if (!pkColumn) {
+              if (table === 'leave_balances') pkColumn = 'emp_id'; // compound pk handling workaround
+              else pkColumn = columnsInfo[0]?.name || 'id'; // strict fallback
+            }
 
-          const chunkArray = (arr: any[], size: number): any[][] => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
-          const chunks = chunkArray(columnsInfo, 30);
-          
-          const buildJsonObj = (chunks: any[][], prefix: string) => {
-            if (chunks.length === 0) return "'{}'";
-            const objStrs = chunks.map(chunk => `json_object(${chunk.map(c => `\'${c.name}\', ${prefix}.${c.name}`).join(', ')})`);
-            return objStrs.reduce((acc, str) => `json_patch(${acc}, ${str})`);
-          };
+            const chunkArray = (arr: any[], size: number): any[][] => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
+            const chunks = chunkArray(columnsInfo, 30);
+            
+            const buildJsonObj = (chunks: any[][], prefix: string) => {
+              if (chunks.length === 0) return "'{}'";
+              const objStrs = chunks.map(chunk => `json_object(${chunk.map(c => `\'${c.name}\', ${prefix}.${c.name}`).join(', ')})`);
+              return objStrs.reduce((acc, str) => `json_patch(${acc}, ${str})`);
+            };
 
-          const newColsObjStr = buildJsonObj(chunks, 'NEW');
-          const oldColsObjStr = buildJsonObj(chunks, 'OLD');
+            const newColsObjStr = buildJsonObj(chunks, 'NEW');
+            const oldColsObjStr = buildJsonObj(chunks, 'OLD');
 
-          const hasCreatedBy = columnsInfo.some(c => c.name === 'created_by');
-          const hasModifiedBy = columnsInfo.some(c => c.name === 'modified_by');
-          const hasDeletedBy = columnsInfo.some(c => c.name === 'deleted_by');
+            const hasCreatedBy = columnsInfo.some(c => c.name === 'created_by');
+            const hasModifiedBy = columnsInfo.some(c => c.name === 'modified_by');
+            const hasDeletedBy = columnsInfo.some(c => c.name === 'deleted_by');
 
-          const createdByField = hasCreatedBy ? `NEW.created_by` : `NULL`;
-          const modifiedByField = hasModifiedBy ? `NEW.modified_by` : `NULL`;
-          const deletedByField = hasDeletedBy ? `OLD.deleted_by` : `NULL`;
-          
-          try {
-            // INSERT
-            db.exec(`
-              CREATE TRIGGER IF NOT EXISTS trg_${table}_audit_insert AFTER INSERT ON ${table}
-              BEGIN
-                INSERT INTO audit_log (table_name, record_id, action, new_data, changed_by) 
-                VALUES ('${table}', NEW.${pkColumn}, 'INSERT', ${newColsObjStr}, ${createdByField});
-              END;
-            `);
-          } catch(e: any) { console.warn('insert trigger err:', e.message) }
+            const createdByField = hasCreatedBy ? `NEW.created_by` : `NULL`;
+            const modifiedByField = hasModifiedBy ? `NEW.modified_by` : `NULL`;
+            const deletedByField = hasDeletedBy ? `OLD.deleted_by` : `NULL`;
+            
+            try {
+              // INSERT
+              db.exec(`
+                CREATE TRIGGER IF NOT EXISTS trg_${table}_audit_insert AFTER INSERT ON ${table}
+                BEGIN
+                  INSERT INTO audit_log (table_name, record_id, action, new_data, changed_by) 
+                  VALUES ('${table}', NEW.${pkColumn}, 'INSERT', ${newColsObjStr}, ${createdByField});
+                END;
+              `);
+            } catch(e: any) { console.warn('insert trigger err:', e.message) }
 
-          try {
-            // UPDATE
-            db.exec(`
-              CREATE TRIGGER IF NOT EXISTS trg_${table}_audit_update AFTER UPDATE ON ${table}
-              BEGIN
-                INSERT INTO audit_log (table_name, record_id, action, old_data, new_data, changed_by) 
-                VALUES ('${table}', NEW.${pkColumn}, 'UPDATE', ${oldColsObjStr}, ${newColsObjStr}, ${modifiedByField});
-              END;
-            `);
-          } catch(e: any) { console.warn('update trigger err:', e.message) }
+            try {
+              // UPDATE
+              db.exec(`
+                CREATE TRIGGER IF NOT EXISTS trg_${table}_audit_update AFTER UPDATE ON ${table}
+                BEGIN
+                  INSERT INTO audit_log (table_name, record_id, action, old_data, new_data, changed_by) 
+                  VALUES ('${table}', NEW.${pkColumn}, 'UPDATE', ${oldColsObjStr}, ${newColsObjStr}, ${modifiedByField});
+                END;
+              `);
+            } catch(e: any) { console.warn('update trigger err:', e.message) }
 
-          try {
-            // DELETE (Hard delete tracking)
-            db.exec(`
-              CREATE TRIGGER IF NOT EXISTS trg_${table}_audit_delete AFTER DELETE ON ${table}
-              BEGIN
-                INSERT INTO audit_log (table_name, record_id, action, old_data, changed_by) 
-                VALUES ('${table}', OLD.${pkColumn}, 'DELETE', ${oldColsObjStr}, ${deletedByField});
-              END;
-            `);
-          } catch(e: any) { console.warn('delete trigger err:', e.message) }
-        }
+            try {
+              // DELETE (Hard delete tracking)
+              db.exec(`
+                CREATE TRIGGER IF NOT EXISTS trg_${table}_audit_delete AFTER DELETE ON ${table}
+                BEGIN
+                  INSERT INTO audit_log (table_name, record_id, action, old_data, changed_by) 
+                  VALUES ('${table}', OLD.${pkColumn}, 'DELETE', ${oldColsObjStr}, ${deletedByField});
+                END;
+              `);
+            } catch(e: any) { console.warn('delete trigger err:', e.message) }
+          }
+          db.exec('COMMIT');
+          index += 5;
+          setImmediate(processChunk);
+        };
+        
+        processChunk();
       } catch (e: any) {
         console.warn(`[Audit] Failed to setup dynamic audit triggers for ${dbName}:`, e.message);
       }
@@ -508,22 +494,25 @@ export async function startLegacyServer(app: any, isVite: boolean) {
         if (table === 'settings') pkColumn = 'key';
         if (table === 'leave_balances') pkColumn = 'emp_id'; // Composite PK, but just using emp_id for queue is fine
 
+        primaryDb.exec(`DROP TRIGGER IF EXISTS trg_${table}_k_insert;`);
         primaryDb.exec(`
           CREATE TRIGGER IF NOT EXISTS trg_${table}_k_insert AFTER INSERT ON ${table}
           BEGIN
-            INSERT INTO sync_queue (entity_type, entity_id, operation) VALUES ('${table}', NEW.${pkColumn}, 'INSERT');
+            INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('${table}', NEW.${pkColumn}, 'INSERT');
           END;
         `);
+        primaryDb.exec(`DROP TRIGGER IF EXISTS trg_${table}_k_update;`);
         primaryDb.exec(`
           CREATE TRIGGER IF NOT EXISTS trg_${table}_k_update AFTER UPDATE ON ${table}
           BEGIN
             INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('${table}', NEW.${pkColumn}, 'UPDATE');
           END;
         `);
+        primaryDb.exec(`DROP TRIGGER IF EXISTS trg_${table}_k_delete;`);
         primaryDb.exec(`
           CREATE TRIGGER IF NOT EXISTS trg_${table}_k_delete AFTER DELETE ON ${table}
           BEGIN
-            INSERT INTO sync_queue (entity_type, entity_id, operation) VALUES ('${table}', OLD.${pkColumn}, 'DELETE');
+            INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation) VALUES ('${table}', OLD.${pkColumn}, 'DELETE');
           END;
         `);
       } catch (e: any) {
@@ -1141,11 +1130,11 @@ export async function startLegacyServer(app: any, isVite: boolean) {
       }
 
       if (!adminUser) {
-        primaryDb.prepare('INSERT INTO users (name, username, password, role_id) VALUES (?, ?, ?, ?)')
+        primaryDb.prepare('INSERT INTO users (name, username, password_hash, role_id) VALUES (?, ?, ?, ?)')
           .run('Rajesh Kumar', 'superadmin', hash, superAdminRole.id);
         console.log('[Database] Created default superadmin user');
       } else {
-        primaryDb.prepare('UPDATE users SET password = ?, role_id = ? WHERE username = ?').run(hash, superAdminRole.id, 'superadmin');
+        primaryDb.prepare('UPDATE users SET password_hash = ?, role_id = ? WHERE username = ?').run(hash, superAdminRole.id, 'superadmin');
         console.log('[Database] Reinstated superadmin password (Dev Mode)');
       }
     }
@@ -1251,7 +1240,7 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Tauri Invoke Emulator Endpoint (v1)
+  // Data-Sync / Command Emulator Endpoint (v1)
   app.post('/api/data-sync', apiKeyMiddleware, bridgeGuardMiddleware(primaryDb), async (req, res) => {
     if (!dbState.isReady) {
       return res.status(503).json({ error: 'Database is still initializing' });
@@ -1276,14 +1265,12 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
       }
     } else if (typeof req.body === 'string' && req.body.length > 0 && !req.body.startsWith('{')) {
       try {
-        const key = "waf-bypass";
-        const bodyStr = req.body.trim();
-        const binary = Buffer.from(bodyStr, 'base64').toString('binary');
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+        const key = Buffer.from("waf-bypass");
+        const buf = Buffer.from(req.body.trim(), 'base64');
+        for (let i = 0; i < buf.length; i++) {
+          buf[i] ^= key[i % key.length];
         }
-        const decoded = Buffer.from(bytes).toString('utf-8');
+        const decoded = buf.toString('utf-8');
         const parsed = JSON.parse(decoded);
         cmd = parsed.cmd;
         args = parsed.args || {};
@@ -1292,13 +1279,12 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
       }
     } else if (req.body && req.body.wdata) {
       try {
-        const key = "waf-bypass";
-        const binary = Buffer.from(req.body.wdata, 'base64').toString('binary');
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+        const key = Buffer.from("waf-bypass");
+        const buf = Buffer.from(req.body.wdata, 'base64');
+        for (let i = 0; i < buf.length; i++) {
+          buf[i] ^= key[i % key.length];
         }
-        const decoded = Buffer.from(bytes).toString('utf-8');
+        const decoded = buf.toString('utf-8');
         const parsed = JSON.parse(decoded);
         cmd = parsed.cmd;
         args = parsed.args || {};
@@ -1330,9 +1316,23 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
       }
     }
     
+    // Auth Check
+    delete req.headers['x-user-role'];
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decodedToken = jwt.verify(token, CONFIG.SECURITY_KEY) as any;
+        (req as any).user = decodedToken;
+        req.headers['x-user-role'] = decodedToken.role;
+      } catch(err) {
+        // invalid token
+      }
+    }
+    
       if (!CONFIG.IS_PRODUCTION) {
         const logArgs = JSON.stringify(args);
-        console.log(`[Tauri Emulator] Command: ${cmd}`, logArgs.length > 500 ? `${logArgs.substring(0, 500)}... (truncated)` : logArgs);
+        console.log(`[Data-Sync] Command: ${cmd}`, logArgs.length > 500 ? `${logArgs.substring(0, 500)}... (truncated)` : logArgs);
         console.log(`Checking COMMAND_MAP for ${cmd}, exists:`, !!COMMAND_MAP[cmd]);
       }
       
@@ -1351,7 +1351,7 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
         
         res.status(404).json({ error: `Command ${cmd} not implemented in emulator` });
     } catch (err: any) {
-      console.error('[Tauri Emulator Error]', err);
+      console.error('[Emulator Error]', err);
       res.status(500).json({ error: err.message || 'Internal Server Error' });
     }
   });
@@ -1393,7 +1393,7 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
   });
 
   app.get(['/api/:table', '/api/statutory/:table'], apiKeyMiddleware, (req, res) => {
-    const table_name = req.params.table;
+    const table_name = req.params.table as string;
     if (!CONFIG.IS_PRODUCTION) console.log(`[Emulator API] GET ${table_name}`);
     if (!table_name || table_name === 'undefined') {
       return res.status(400).json({ error: 'Table name is required or undefined' });
@@ -1416,7 +1416,7 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
   });
 
   app.post(['/api/:table', '/api/statutory/:table'], apiKeyMiddleware, (req, res) => {
-    const table_name = req.params.table;
+    const table_name = req.params.table as string;
     if (!CONFIG.IS_PRODUCTION) console.log(`[Emulator API] POST ${table_name}`, JSON.stringify(req.body));
     if (!table_name || table_name === 'undefined') {
       return res.status(400).json({ error: 'Table name is required or undefined' });
@@ -1462,7 +1462,7 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
   });
 
   app.post(['/api/:table/bulk', '/api/statutory/:table/bulk'], apiKeyMiddleware, (req, res) => {
-    const table_name = req.params.table;
+    const table_name = req.params.table as string;
 
     if (!CRUD_TABLE_WHITELIST.includes(table_name)) {
       return res.status(403).json({ error: 'Access denied. Unauthorized table.' });
@@ -1525,8 +1525,9 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
 
   app.delete(['/api/:table/:id', '/api/statutory/:table/:id'], apiKeyMiddleware, (req, res) => {
     const { table, id } = req.params;
+    const table_name = String(table);
 
-    if (!CRUD_TABLE_WHITELIST.includes(table)) {
+    if (!CRUD_TABLE_WHITELIST.includes(table_name)) {
       return res.status(403).json({ error: 'Access denied. Unauthorized table.' });
     }
 
@@ -1604,13 +1605,17 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
     runPostSetupMigrations(primaryDb, statutoryDb);
     primaryDb.pragma('wal_checkpoint(TRUNCATE)');
     statutoryDb.pragma('wal_checkpoint(TRUNCATE)');
-    DuckDBAnalyticsRepo.init();
-    setTimeout(() => DuckDBAnalyticsRepo.refreshMaterializedViews(() => {}), 2000);
+    DuckDBAnalyticsRepo.init()
+      .then(() => {
+         console.log("DuckDB Initialized successfully, triggering view refresh...");
+         return DuckDBAnalyticsRepo.refreshMaterializedViews(() => {});
+      })
+      .catch(e => console.error("DuckDB Init Error", e));
 
     // --- RE3000 SCHEDULING ENGINE ---
     setInterval(async () => {
        const now = new Date();
-       const runSchedulesForDb = async (db: Database, type: string) => {
+       const runSchedulesForDb = async (db: Database.Database, type: string) => {
          try {
            const schedules = db.prepare(`SELECT * FROM report_schedules WHERE status = 'ACTIVE'`).all() as any[];
            for (const schedule of schedules) {
@@ -1687,5 +1692,5 @@ function setupRoutes(app: express.Application, primaryDb: any, statutoryDb: any,
   setupRoutes(app, primaryDb, statutoryDb, dbState);
   
   const isProduction = process.env.NODE_ENV === 'production' && fs.existsSync(path.join(process.cwd(), 'dist'));
-  return { primaryDb, statutoryDb, dbState, setupRoutes, server };
+  return { primaryDb, statutoryDb, dbState, setupRoutes };
 }

@@ -1,9 +1,30 @@
 import Database from 'better-sqlite3';
 
-export const recalculateCanteenRules = (db: Database.Database) => {
+export const recalculateCanteenRules = (db: Database.Database, empId?: number) => {
   try {
-    const rules = db.prepare("SELECT * FROM canteen_rules WHERE effective_date IS NULL OR effective_date <= date('now', 'localtime') ORDER BY id ASC").all() as any[];
-    const employees = db.prepare('SELECT id, class_id, category_id, group_id, department_id, designation_id FROM employees WHERE status = 1').all() as any[];
+    const rules = db.prepare("SELECT * FROM canteen_rules WHERE effective_date IS NULL OR effective_date <= date('now', 'localtime')").all() as any[];
+    
+    // Sort rules by Priority: Designation > Department > Group > Category > Default Rule
+    rules.sort((a, b) => {
+      const getScore = (rule: any) => {
+        let score = 0;
+        try { if (JSON.parse(rule.designations || '[]').length > 0) score += 10000; } catch(e){}
+        try { if (JSON.parse(rule.departments || '[]').length > 0) score += 1000; } catch(e){}
+        try { if (JSON.parse(rule.groups || '[]').length > 0) score += 100; } catch(e){}
+        try { if (JSON.parse(rule.categories || '[]').length > 0) score += 10; } catch(e){}
+        try { if (JSON.parse(rule.classes || '[]').length > 0) score += 1; } catch(e){}
+        return score;
+      };
+      return getScore(b) - getScore(a); // High score first
+    });
+
+    let q = 'SELECT id, class_id, category_id, group_id, department_id, designation_id FROM employees WHERE status = 1';
+    let params: any[] = [];
+    if (empId) {
+      q += ' AND id = ?';
+      params.push(empId);
+    }
+    const employees = db.prepare(q).all(...params) as any[];
     
     // We only update those without manual overrides
     const upsertStmt = db.prepare(`
@@ -17,8 +38,11 @@ export const recalculateCanteenRules = (db: Database.Database) => {
 
     db.transaction(() => {
       // Clear out automatic ones
-      db.prepare('DELETE FROM canteen_employee_benefits WHERE is_manual_override = 0').run();
-      // Notice: doing this might remove an employee entirely from the table if they are no longer covered by ANY rule, which is the correct behavior (they are no longer covered by auto rules).
+      if (empId) {
+         db.prepare('DELETE FROM canteen_employee_benefits WHERE is_manual_override = 0 AND emp_id = ?').run(empId);
+      } else {
+         db.prepare('DELETE FROM canteen_employee_benefits WHERE is_manual_override = 0').run();
+      }
       
       for (const emp of employees) {
         let matchedRule = null;
@@ -35,6 +59,7 @@ export const recalculateCanteenRules = (db: Database.Database) => {
           try { desigs = JSON.parse(rule.designations || '[]'); } catch(e){}
           
           let matches = true;
+          // If a criteria array is defined, employee must match it to be considered
           if (classes.length && !classes.includes(emp.class_id)) matches = false;
           if (categories.length && !categories.includes(emp.category_id)) matches = false;
           if (groups.length && !groups.includes(emp.group_id)) matches = false;
@@ -43,7 +68,7 @@ export const recalculateCanteenRules = (db: Database.Database) => {
           
           if (matches) {
             matchedRule = rule;
-            break;
+            break; // Since sorted by descending priority, the first match is the best
           }
         }
         
@@ -56,3 +81,4 @@ export const recalculateCanteenRules = (db: Database.Database) => {
     console.error("[Canteen Engine] Rule recalculation failed:", err);
   }
 };
+

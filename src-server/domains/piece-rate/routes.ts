@@ -69,7 +69,7 @@ pieceRateRouter.delete('/heads/:id', (req: Request, res: Response) => {
     try {
         const db = (req as any).primaryDb;
         const service = new PieceRateService(db);
-        service.deleteHead(req.params.id, 'admin');
+        service.deleteHead(req.params.id as string, 'admin');
         res.json({ success: true });
     } catch (error: any) {
         console.error('[Piece Rate] delete head error:', error);
