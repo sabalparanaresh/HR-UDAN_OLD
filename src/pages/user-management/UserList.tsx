@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useModule } from '../../contexts/ModuleContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { Plus, Search, Edit2, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { usePermission } from '../../hooks/useRBAC';
+import { useRoles } from '../../hooks/useRoles';
 
-export default function UserList() {
+export default React.memo(function UserList() {
     const { user: currentUser } = useAuthStore();
     const queryClient = useQueryClient();
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -19,24 +20,20 @@ export default function UserList() {
     const [form, setForm] = useState({ id: 0, name: '', username: '', password: '', role_id: '', status: 'ACTIVE' });
 
     const { data: usersData, isLoading } = useQuery({
-        queryKey: ['usersList'],
+        queryKey: ['usersList', currentMode],
         queryFn: async () => {
-            const res = await invoke<any>('user_crud', { operation: 'list' });
+            const res = await invoke<any>('user_crud', { operation: 'list', moduleType: currentMode });
             return { success: true, data: res };
-        }
+        },
+        staleTime: 1000 * 60 * 5, // 5 minutes
+        gcTime: 1000 * 60 * 30, // 30 minutes
     });
 
-    const { data: rolesData } = useQuery({
-        queryKey: ['rolesList'],
-        queryFn: async () => {
-             const res = await invoke<any>('user_crud', { operation: 'get_roles' });
-             return { success: true, data: res };
-        }
-    });
+    const { data: rolesData } = useRoles(currentMode);
 
     const saveMutation = useMutation({
         mutationFn: async (data: any) => {
-             await invoke('user_crud', { operation: data.id ? 'update' : 'create', id: data.id, data });
+             await invoke('user_crud', { operation: data.id ? 'update' : 'create', id: data.id, data, moduleType: currentMode });
         },
         onSuccess: () => {
             toast.success('User saved successfully');
@@ -48,7 +45,7 @@ export default function UserList() {
 
     const deleteMutation = useMutation({
         mutationFn: async (id: number) => {
-             await invoke('user_crud', { operation: 'delete', id });
+             await invoke('user_crud', { operation: 'delete', id, moduleType: currentMode });
         },
         onSuccess: () => {
             toast.success('User deleted successfully');
@@ -57,22 +54,27 @@ export default function UserList() {
         onError: (e: any) => toast.error(e.message)
     });
 
-    const roles = (rolesData?.data || []).filter((r: any) => currentMode === 'P' || r.name !== 'Auditor');
-    const users = (usersData?.data || []).filter((u: any) => {
-       if (currentUser?.role !== 'SUPERADMIN' && u.role_name === 'SUPERADMIN') return false;
-       if (currentMode === 'K' && (u.role_name === 'Auditor' || u.role_name === 'AUDITOR')) return false;
-       return true;
-    });
+    const roles = useMemo(() => {
+        return (rolesData?.data || []).filter((r: any) => currentMode === 'P' || r.name !== 'Auditor');
+    }, [rolesData?.data, currentMode]);
+    
+    const users = useMemo(() => {
+        return (usersData?.data || []).filter((u: any) => {
+            if (currentUser?.role !== 'SUPERADMIN' && u.role_name === 'SUPERADMIN') return false;
+            if (currentMode === 'K' && (u.role_name === 'Auditor' || u.role_name === 'AUDITOR')) return false;
+            return true;
+        });
+    }, [usersData?.data, currentUser?.role, currentMode]);
 
-    const handleEdit = (u: any) => {
+    const handleEdit = React.useCallback((u: any) => {
         setForm({ id: u.id, name: u.name, username: u.username, password: '', role_id: u.role_id, status: u.status });
         setIsModalOpen(true);
-    };
+    }, []);
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = React.useCallback((e: React.FormEvent) => {
         e.preventDefault();
         saveMutation.mutate(form);
-    };
+    }, [form, saveMutation]);
 
     if (isLoading) return <div>Loading users...</div>;
 
@@ -163,4 +165,4 @@ export default function UserList() {
             )}
         </div>
     );
-}
+});

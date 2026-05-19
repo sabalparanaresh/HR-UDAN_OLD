@@ -61,6 +61,18 @@ export const REPORT_REGISTRY: ReportMetadata[] = [
     dynamicColumns: false
   },
   {
+    code: 'PRE_DEFINED_REPORTS',
+    label: 'PreDefined Reports',
+    description: 'Explore and export standard reports.',
+    path: '/reports/pre-defined',
+    icon: <FileText size={16} />,
+    moduleType: 'ALL',
+    permissions: ['ADMIN', 'HR_MANAGER', 'AUDITOR'],
+    filters: { showDateRange: false },
+    exportOptions: ['CSV', 'EXCEL', 'PDF'],
+    chartCompatibility: ['table']
+  },
+  {
     code: 'DASH_ENGINE',
     label: 'Dashboard Engine',
     description: 'High-level analytical dashboard.',

@@ -1,13 +1,32 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
+import { 
+  ModuleRegistry, 
+  ClientSideRowModelModule,
+  PaginationModule,
+  ValidationModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  CustomFilterModule,
+  CsvExportModule
+} from 'ag-grid-community';
 import { useSalaryColumnEngine } from '../../hooks/useSalaryColumnEngine';
 import { FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { toast } from 'sonner';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  PaginationModule,
+  ValidationModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  CustomFilterModule,
+  CsvExportModule
+]);
 
 export default function FinalPayrollView() {
   const { currentMode } = useModule();

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { ShieldCheck, Calendar, User, FileText, Search, Activity, Download } from 'lucide-react';
 import { toast } from 'sonner';

@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { useModule } from '../../contexts/ModuleContext';

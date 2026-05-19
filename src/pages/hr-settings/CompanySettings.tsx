@@ -23,7 +23,8 @@ import {
   FileSpreadsheet,
   FileText,
   Info,
-  Plus
+  Plus,
+  Calculator
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -34,7 +35,7 @@ import { EmployeeSearchSelect } from '../../components/form/EmployeeSearchSelect
 
 import { usePermission } from '../../hooks/useRBAC';
 import { useModule } from '../../contexts/ModuleContext';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -119,6 +120,7 @@ const companySettingsSchema = z.object({
   // Payroll Rules
   payroll_adjustment_head: z.string().optional(),
   weekly_off_source: z.enum(['Global', 'Employee']),
+  k_salary_calculation_source: z.enum(['EMPLOYEE_MASTER', 'DAILY_MIS']).optional(),
 });
 
 type CompanySettingsData = z.infer<typeof companySettingsSchema>;
@@ -243,6 +245,7 @@ export default function CompanySettings({ currentUser }: CompanySettingsProps) {
       designation: "General Manager",
       signatories: [],
       weekly_off_source: 'Global',
+      k_salary_calculation_source: 'EMPLOYEE_MASTER',
     }
   });
 
@@ -278,6 +281,13 @@ export default function CompanySettings({ currentUser }: CompanySettingsProps) {
             }
           });
         }
+
+        if (currentMode === 'K') {
+          const payrollRules = await invoke<any>('get_payroll_rules');
+          if (payrollRules && payrollRules.k_salary_calculation_source) {
+            setValue('k_salary_calculation_source', payrollRules.k_salary_calculation_source);
+          }
+        }
       } catch (err) {
         console.error("Failed to fetch company config:", err);
       }
@@ -296,6 +306,10 @@ export default function CompanySettings({ currentUser }: CompanySettingsProps) {
         config: data,
         module_type: currentMode
       });
+
+      if (currentMode === 'K' && data.k_salary_calculation_source) {
+        await invoke('update_payroll_rules', { rules: { k_salary_calculation_source: data.k_salary_calculation_source } });
+      }
 
       toast.success(`Configuration saved successfully!`, {
         description: `All settings for ${data.company_name} have been updated.`,
@@ -1228,6 +1242,51 @@ export default function CompanySettings({ currentUser }: CompanySettingsProps) {
                       </select>
                       <p className="text-[9px] text-text-muted leading-relaxed italic">
                         Select the salary head where any manual payroll adjustments or round-offs will be applied by default.
+                      </p>
+                    </div>
+                  </div>
+
+                  <h4 className="text-xs textile-header font-bold text-primary-navy uppercase tracking-wider flex items-center gap-2 mt-8">
+                    <Calculator size={14} /> K Salary Engine Source
+                  </h4>
+                  <div className="bg-slate-50 p-6 rounded-lg border border-app-border space-y-6">
+                    <div className="space-y-3">
+                      <label className="text-[10px] textile-header text-text-muted uppercase font-bold tracking-tight">Salary Calculation Source</label>
+                      <div className="flex bg-white p-1 rounded-lg border border-app-border w-fit">
+                        <button
+                          type="button"
+                          onClick={() => setValue('k_salary_calculation_source', 'EMPLOYEE_MASTER')}
+                          className={cn(
+                            "px-4 py-2 text-xs font-bold rounded-md transition-all uppercase tracking-widest",
+                            watch('k_salary_calculation_source') === 'EMPLOYEE_MASTER' 
+                              ? "bg-primary-navy text-white shadow-md scale-105" 
+                              : "text-text-muted hover:bg-slate-100"
+                          )}
+                        >
+                          Employee Master
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setValue('k_salary_calculation_source', 'DAILY_MIS')}
+                          className={cn(
+                            "px-4 py-2 text-xs font-bold rounded-md transition-all uppercase tracking-widest",
+                            watch('k_salary_calculation_source') === 'DAILY_MIS' 
+                              ? "bg-primary-navy text-white shadow-md scale-105" 
+                              : "text-text-muted hover:bg-slate-100"
+                          )}
+                        >
+                          Daily MIS
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-primary-navy/5 p-3 rounded border border-primary-navy/10 flex gap-3">
+                      <Info className="text-primary-navy shrink-0" size={16} />
+                      <p className="text-[10px] text-primary-navy/80 leading-relaxed font-medium">
+                        {watch('k_salary_calculation_source') === 'EMPLOYEE_MASTER' 
+                          ? "EMPLOYEE MASTER: System will use standard processing based on designations, classes, and master rates."
+                          : "DAILY MIS: System will use Daily MIS attendance combined with dynamic worked rates."
+                        }
                       </p>
                     </div>
                   </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { 
   Plus, 
   Search, 
@@ -27,7 +27,7 @@ import { EmployeeSearchSelect } from '../../components/form/EmployeeSearchSelect
 import * as Tabs from '@radix-ui/react-tabs';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { Pagination } from '../../components/common/Pagination';
 
@@ -152,7 +152,7 @@ export default function GroupDepartmentMaster() {
     const reader = new FileReader();
     reader.onload = async (evt) => {
       const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wb = await XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       try {
@@ -190,7 +190,7 @@ export default function GroupDepartmentMaster() {
     const reader = new FileReader();
     reader.onload = async (evt) => {
       const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wb = await XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       try {

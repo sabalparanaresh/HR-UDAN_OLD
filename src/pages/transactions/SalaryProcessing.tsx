@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { 
   Calculator, 
@@ -34,6 +34,8 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { SearchableSelect, MultiSearchableSelect } from '../../components/common/SearchableSelect';
 import { useFinalPayroll } from '../../hooks/useFinalPayroll';
+import { usePayrollFiltersStore } from '../../store/payrollFiltersStore';
+import { useRenderProfile } from '../../hooks/useAttendancePerformance';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -201,32 +203,34 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   const [kpHeads, setKpHeads] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-  const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isDebouncing, setIsDebouncing] = useState(false);
   const [selectedEmployeeSlip, setSelectedEmployeeSlip] = useState<any>(null);
   const limit = 50;
+  
+  const filters = usePayrollFiltersStore(state => state.filters);
+  const setFilters = usePayrollFiltersStore(state => state.setFilters);
 
   // Search Debouncing
   useEffect(() => {
-    if (searchQuery === debouncedSearch) {
+    if (filters.searchQuery === debouncedSearch) {
       setIsDebouncing(false);
       return;
     }
     setIsDebouncing(true);
     const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
+      setDebouncedSearch(filters.searchQuery);
       setIsDebouncing(false);
     }, 1000);
     return () => clearTimeout(timer);
-  }, [searchQuery, debouncedSearch]);
+  }, [filters.searchQuery, debouncedSearch]);
   
   const fetchGridData = async (step: PayrollStep, p: number, q: string) => {
     if (step === 'Filtering' || step === 'Consolidating') return;
     const type = step === 'K_Processing' ? 'K' : 'P';
     try {
       const res = await invoke<{data: any[], total: number}>('get_paginated_salary_results', {
-        month: selectedMonth, type, page: p, limit, search: q
+        month: filters.selectedMonth, type, page: p, limit, search: q
       });
       setGridData(res.data);
       setTotalRecords(res.total);
@@ -235,9 +239,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
     }
   };
 
-  // Filter States
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-  const finalPayroll = useFinalPayroll(selectedMonth, currentStep === 'Consolidating');
+  const finalPayroll = useFinalPayroll(filters.selectedMonth, currentStep === 'Consolidating');
 
   useEffect(() => {
     if (currentStep === 'K_Processing' || currentStep === 'P_Syncing') {
@@ -256,16 +258,10 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   const [categories, setCategories] = useState<any[]>([]);
   const [designations, setDesignations] = useState<any[]>([]);
 
-  const [selectedDeptIds, setSelectedDeptIds] = useState<number[]>([]);
-  const [selectedLocationIds, setSelectedLocationIds] = useState<number[]>([]);
-  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
-  const [selectedDivisionIds, setSelectedDivisionIds] = useState<number[]>([]);
-  const [selectedClassIds, setSelectedClassIds] = useState<number[]>([]);
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
-  const [selectedDesignationIds, setSelectedDesignationIds] = useState<number[]>([]);
-
   const [isCircuitBroken, setIsCircuitBroken] = useState(false);
-  const [kLogicSource, setKLogicSource] = useState<string>('EMPLOYEE_MASTER');
+
+  useRenderProfile('SalaryProcessing');
+
 
   // Alt + Shift + K shortcut
   useHotkeys('alt+shift+k', () => {
@@ -283,7 +279,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
     try {
       const rules = await invoke<any>('get_payroll_rules');
       if (rules && rules.k_salary_calculation_source) {
-        setKLogicSource(rules.k_salary_calculation_source);
+        setFilters({ kLogicSource: rules.k_salary_calculation_source });
       }
     } catch (e) {
       console.error(e);
@@ -328,15 +324,15 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
     setLoading(true);
     try {
       const response = await invoke<any>('calculate_k_module_wages', {
-        month: selectedMonth,
+        month: filters.selectedMonth,
         filters: {
-          departmentId: selectedDeptIds.length > 0 ? selectedDeptIds : null,
-          locationId: selectedLocationIds.length > 0 ? selectedLocationIds : null,
-          groupId: selectedGroupIds.length > 0 ? selectedGroupIds : null,
-          divisionId: selectedDivisionIds.length > 0 ? selectedDivisionIds : null,
-          classId: selectedClassIds.length > 0 ? selectedClassIds : null,
-          categoryId: selectedCategoryIds.length > 0 ? selectedCategoryIds : null,
-          designationId: selectedDesignationIds.length > 0 ? selectedDesignationIds : null,
+          departmentId: filters.selectedDeptIds.length > 0 ? filters.selectedDeptIds : null,
+          locationId: filters.selectedLocationIds.length > 0 ? filters.selectedLocationIds : null,
+          groupId: filters.selectedGroupIds.length > 0 ? filters.selectedGroupIds : null,
+          divisionId: filters.selectedDivisionIds.length > 0 ? filters.selectedDivisionIds : null,
+          classId: filters.selectedClassIds.length > 0 ? filters.selectedClassIds : null,
+          categoryId: filters.selectedCategoryIds.length > 0 ? filters.selectedCategoryIds : null,
+          designationId: filters.selectedDesignationIds.length > 0 ? filters.selectedDesignationIds : null,
         }
       });
       const rawData = Array.isArray(response) ? response : response.employees;
@@ -366,7 +362,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
     setLoading(true);
     try {
       const pData = await invoke<any[]>('calculate_p_module_statutory', {
-        month: selectedMonth,
+        month: filters.selectedMonth,
         kResults: kResults
       });
       setMergedResults(pData);
@@ -383,7 +379,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
     setProcessing(true);
     try {
       await invoke('process_payroll', {
-        month: selectedMonth
+        month: filters.selectedMonth
       });
       toast.success("Final Consolidation & Merge Successful!");
       setCurrentStep('Consolidating');
@@ -513,10 +509,10 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
 
       const row: any = { ...r };
 
-      if (kLogicSource === 'DAILY_MIS') {
+      if (filters.kLogicSource === 'DAILY_MIS') {
         row.wage_rate = r.k_attendance && r.k_attendance > 0 ? Number((r.k_gross_wage / r.k_attendance).toFixed(2)) : 0;
       }
-      row.salary_source_engine = kLogicSource;
+      row.salary_source_engine = filters.kLogicSource;
 
       // K Earnings (K_ONLY)
       kEarningHeads.forEach(h => { row[`k_earning_${h.id}`] = kEarnings[h.name] || 0; });
@@ -563,7 +559,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
     worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
 
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `HRUDAN_Final_Payroll_Export_${selectedMonth}.xlsx`);
+    saveAs(new Blob([buffer]), `HRUDAN_Final_Payroll_Export_${filters.selectedMonth}.xlsx`);
     toast.success("Final Payroll Audit Export Generated successfully");
   };
 
@@ -644,8 +640,8 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
               <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Processing Month</label>
               <input 
                 type="month" 
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                value={filters.selectedMonth}
+                onChange={(e) => setFilters({ selectedMonth: e.target.value })}
                 className="w-full p-3 bg-slate-50 border border-app-border rounded-lg text-sm font-bold text-primary-navy"
               />
             </div>
@@ -661,44 +657,44 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
               <MultiSearchableSelect 
                 label="Location" 
                 options={locations.map(l => ({ value: l.id.toString(), label: l.name }))} 
-                value={selectedLocationIds.map(id => id.toString())}
-                onChange={(val) => setSelectedLocationIds(val.map(id => parseInt(id)))}
+                value={filters.selectedLocationIds.map(id => id.toString())}
+                onChange={(val) => setFilters({ selectedLocationIds: val.map(id => parseInt(id)) })}
               />
               <MultiSearchableSelect 
                 label="Division" 
                 options={divisions.map(d => ({ value: d.id.toString(), label: d.name }))} 
-                value={selectedDivisionIds.map(id => id.toString())}
-                onChange={(val) => setSelectedDivisionIds(val.map(id => parseInt(id)))}
+                value={filters.selectedDivisionIds.map(id => id.toString())}
+                onChange={(val) => setFilters({ selectedDivisionIds: val.map(id => parseInt(id)) })}
               />
               <MultiSearchableSelect 
                 label="Class" 
                 options={classes.map(c => ({ value: c.id.toString(), label: c.name }))} 
-                value={selectedClassIds.map(id => id.toString())}
-                onChange={(val) => setSelectedClassIds(val.map(id => parseInt(id)))}
+                value={filters.selectedClassIds.map(id => id.toString())}
+                onChange={(val) => setFilters({ selectedClassIds: val.map(id => parseInt(id)) })}
               />
               <MultiSearchableSelect 
                 label="Category" 
                 options={categories.map(c => ({ value: c.id.toString(), label: c.name }))} 
-                value={selectedCategoryIds.map(id => id.toString())}
-                onChange={(val) => setSelectedCategoryIds(val.map(id => parseInt(id)))}
+                value={filters.selectedCategoryIds.map(id => id.toString())}
+                onChange={(val) => setFilters({ selectedCategoryIds: val.map(id => parseInt(id)) })}
               />
               <MultiSearchableSelect 
                 label="Group" 
                 options={groups.map(g => ({ value: g.id.toString(), label: g.name }))} 
-                value={selectedGroupIds.map(id => id.toString())}
-                onChange={(val) => setSelectedGroupIds(val.map(id => parseInt(id)))}
+                value={filters.selectedGroupIds.map(id => id.toString())}
+                onChange={(val) => setFilters({ selectedGroupIds: val.map(id => parseInt(id)) })}
               />
               <MultiSearchableSelect 
                 label="Department" 
                 options={departments.map(d => ({ value: d.id.toString(), label: d.name }))} 
-                value={selectedDeptIds.map(id => id.toString())}
-                onChange={(val) => setSelectedDeptIds(val.map(id => parseInt(id)))}
+                value={filters.selectedDeptIds.map(id => id.toString())}
+                onChange={(val) => setFilters({ selectedDeptIds: val.map(id => parseInt(id)) })}
               />
               <MultiSearchableSelect 
                 label="Designation" 
                 options={designations.map(d => ({ value: d.id.toString(), label: d.name }))} 
-                value={selectedDesignationIds.map(id => id.toString())}
-                onChange={(val) => setSelectedDesignationIds(val.map(id => parseInt(id)))}
+                value={filters.selectedDesignationIds.map(id => id.toString())}
+                onChange={(val) => setFilters({ selectedDesignationIds: val.map(id => parseInt(id)) })}
               />
             </div>
           </div>
@@ -784,9 +780,9 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={16} />
                  <input 
                    type="text" 
-                   value={searchQuery}
+                   value={filters.searchQuery}
                    onChange={(e) => {
-                     setSearchQuery(e.target.value);
+                     setFilters({ searchQuery: e.target.value });
                      setPage(1);
                    }}
                    placeholder="Search by Code, Name, or Department..."
@@ -871,7 +867,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
                       <EmployeeTableRow 
                         key={item.emp_id} 
                         item={item} 
-                        kLogicSource={kLogicSource} 
+                        kLogicSource={filters.kLogicSource} 
                         kOnlyHeads={kOnlyHeads} 
                         kpHeads={kpHeads} 
                         setSelectedEmployeeSlip={setSelectedEmployeeSlip} 
@@ -931,7 +927,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                  {kLogicSource === 'DAILY_MIS' ? (
+                  {filters.kLogicSource === 'DAILY_MIS' ? (
                     <>
                       <div>
                         <p className="text-[10px] uppercase tracking-widest text-text-muted font-bold">MIS Attendance</p>

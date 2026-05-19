@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { 
   Plus, 
   Trash2, 
@@ -16,7 +16,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { useModule } from '../../contexts/ModuleContext';
 import { cn } from '../../lib/utils';
 import MasterUsageWarningModal from '../../components/common/MasterUsageWarningModal';
@@ -393,7 +393,7 @@ const SalarySlabManager: React.FC = () => {
       if (!bstr) return;
       
       try {
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = await XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         

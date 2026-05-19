@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Check } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 
 export default function PayrollPostingModal({ invoiceId, onCancel }: { invoiceId: string, onCancel: () => void }) {
     const queryClient = useQueryClient();

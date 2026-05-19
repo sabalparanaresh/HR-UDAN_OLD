@@ -18,10 +18,10 @@ import {
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import { format, subMonths } from 'date-fns';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { transformChartData } from '../../utils/format/chartEngine';
+import { transformChartData } from '../../utils';
 
 const MOCK_CHART_DATA = [
   { name: 'Jan', paid: 400000, unpaid: 240000 },

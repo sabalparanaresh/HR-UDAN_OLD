@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { ShieldCheck, Users as UsersIcon } from 'lucide-react';
-import UserList from './UserList';
-import RolesPermissions from './RolesPermissions';
+import { Loader2 } from 'lucide-react';
+
+const UserList = React.lazy(() => import('./UserList'));
+const RolesPermissions = React.lazy(() => import('./RolesPermissions'));
 
 export default function UserManagementGateway() {
   const [activeTab, setActiveTab] = useState('users');
@@ -30,8 +32,14 @@ export default function UserManagementGateway() {
         ))}
       </div>
       <div>
-        {activeTab === 'users' && <UserList />}
-        {activeTab === 'roles' && <RolesPermissions />}
+        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin text-gray-400" /></div>}>
+          <div className={activeTab === 'users' ? 'block' : 'hidden'}>
+            <UserList />
+          </div>
+          <div className={activeTab === 'roles' ? 'block' : 'hidden'}>
+            <RolesPermissions />
+          </div>
+        </Suspense>
       </div>
     </div>
   );

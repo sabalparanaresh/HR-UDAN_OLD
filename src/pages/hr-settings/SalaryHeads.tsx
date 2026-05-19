@@ -9,11 +9,11 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 
 function cn(...inputs: ClassValue[]) {
@@ -213,9 +213,9 @@ export default function SalaryHeads() {
   const downloadTemplate = () => {
     const headers = [[
       'name', 
-      'type', 
+      'category', 
       'system_head', 
-      'allocation_type',
+      'type',
       ...(currentMode === 'K' ? ['applicability'] : []),
       'base_on', 
       'is_part_of_ctc', 
@@ -247,7 +247,7 @@ export default function SalaryHeads() {
     reader.onload = async (evt) => {
       const bstr = evt.target?.result;
       if (!bstr) return;
-      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wb = await XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       try {
@@ -277,8 +277,8 @@ export default function SalaryHeads() {
           if (systemHeadClean === 'PROFESSIONAL_TAX_PT' || systemHeadClean === 'PT') systemHeadClean = 'PROFESSIONAL_TAX';
           if (systemHeadClean === 'INCOME_TAX_TDS' || systemHeadClean === 'TDS') systemHeadClean = 'INCOME_TAX_TDS';
           
-          // 3. Type Normalization (Earnings/Deductions)
-          const typeRaw = (newRow.type || '').toString().toUpperCase().trim();
+          // 3. Category Normalization (Earnings/Deductions)
+          const typeRaw = (newRow.category || newRow.type || '').toString().toUpperCase().trim();
           let typeClean: 'EARNING' | 'DEDUCTION' = 'EARNING'; // Default
           if (typeRaw.includes('DEDUCT')) {
             typeClean = 'DEDUCTION';
@@ -288,7 +288,8 @@ export default function SalaryHeads() {
 
           // 4. Allocation Type / Applicability Normalization
           // User mentions: 'K Only', 'KP', 'Statutory'
-          const allocRaw = (newRow.allocation_type || newRow.allocationType || newRow.applicability || '').toString().toUpperCase().trim().replace(/[\s-]+/g, '_');
+          const allocArg = newRow.allocation_type || newRow.allocationType || newRow.applicability || (newRow.category ? newRow.type : null) || '';
+          const allocRaw = allocArg.toString().toUpperCase().trim().replace(/[\s-]+/g, '_');
           let allocClean: 'K_ONLY' | 'KP' | 'STATUTORY' = 'KP'; // Default
           
           if (allocRaw.includes('K_ONLY') || allocRaw === 'K' || allocRaw === 'ONLY_K' || (allocRaw.includes('K') && !allocRaw.includes('P'))) {

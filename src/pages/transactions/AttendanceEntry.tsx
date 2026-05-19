@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { 
   RefreshCw, Download, CheckCircle2, AlertCircle, Loader2, 
   Fingerprint, Calendar, User, Search, Filter, Plus, 
@@ -17,7 +17,7 @@ import {
   isSameDay 
 } from 'date-fns';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -28,8 +28,12 @@ import { useRegisterShortcut } from '../../components/common/ShortcutProvider';
 import { Pagination } from '../../components/common/Pagination';
 import { SearchableSelect, MultiSearchableSelect } from '../../components/common/SearchableSelect';
 import { EmployeeSearchSelect } from '../../components/form/EmployeeSearchSelect';
+import { useAttendanceEntryStore } from '../../store/attendanceEntryStore';
+import { useAttendanceMasterData } from '../../hooks/useAttendanceMasterData';
+import { useRenderProfile } from '../../hooks/useAttendancePerformance';
 
 function cn(...inputs: ClassValue[]) {
+
   return twMerge(clsx(inputs));
 }
 
@@ -86,72 +90,29 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
 
   const getUrl = (path: string) => currentMode === 'P' ? `/api/statutory${path}` : `/api${path}`;
 
-  // Filters
-  const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedEmpIds, setSelectedEmpIds] = useState<number[]>([]);
-  const [deptId, setDeptId] = useState<string[]>([]);
-  const [locationId, setLocationId] = useState<string[]>([]);
-  const [divisionId, setDivisionId] = useState<string[]>([]);
-  const [groupId, setGroupId] = useState<string[]>([]);
-  const [categoryId, setCategoryId] = useState<string[]>([]);
-  const [classId, setClassId] = useState<string[]>([]);
-  const [designationId, setDesignationId] = useState<string[]>([]);
-  const [machineName, setMachineName] = useState<string[]>([]);
-  const [punchesFilter, setPunchesFilter] = useState<'ALL' | 'MISSED'>('ALL');
+  useRenderProfile('AttendanceEntry');
 
-  // Master Data for Filters
-  const [departments, setDepartments] = useState<any[]>([]);
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
-  const [divisions, setDivisions] = useState<any[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [designations, setDesignations] = useState<any[]>([]);
-  const [machines, setMachines] = useState<any[]>([]);
-
-  const [shifts, setShifts] = useState<any[]>([]);
-  const [holidays, setHolidays] = useState<any[]>([]);
-
-  const fetchMasterData = async () => {
-    try {
-      const data = await invoke<any>('get_master_data', { moduleType: currentMode });
-      
-      setDepartments(Array.isArray(data.departments) ? data.departments : []);
-      setEmployees(Array.isArray(data.employees) ? data.employees : []);
-      setLocations(Array.isArray(data.locations) ? data.locations : []);
-      setDivisions(Array.isArray(data.divisions) ? data.divisions : []);
-      setGroups(Array.isArray(data.groups) ? data.groups : []);
-      setCategories(Array.isArray(data.categories) ? data.categories : []);
-      setClasses(Array.isArray(data.classes) ? data.classes : []);
-      setDesignations(Array.isArray(data.designations) ? data.designations : []);
-      setMachines(Array.isArray(data.machines) ? data.machines : []);
-      setShifts(Array.isArray(data.shifts) ? data.shifts : []);
-      setHolidays(Array.isArray(data.holidays) ? data.holidays : []);
-    } catch (err) {
-      console.error("Failed to load master data:", err);
-      toast.error("Failed to load master data");
-    }
-  };
+  const { departments, employees, locations, divisions, groups, categories, classes, designations, machines, shifts, holidays } = useAttendanceMasterData();
+  const filters = useAttendanceEntryStore(state => state.filters);
+  const setFilters = useAttendanceEntryStore(state => state.setFilters);
 
   const fetchLogs = async () => {
     setIsLoading(true);
     try {
       const data = await invoke<AttendanceLog[]>('get_attendance_logs', {
         filters: {
-          fromDate,
-          toDate,
-          empCodes: employees.filter(e => selectedEmpIds.includes(e.id)).map(e => e.emp_code),
-          departmentId: deptId,
-          locationId,
-          divisionId,
-          groupId,
-          categoryId,
-          classId,
-          designationId,
-          machineName,
-          isMissed: punchesFilter === 'MISSED'
+          fromDate: filters.fromDate,
+          toDate: filters.toDate,
+          empCodes: employees.filter(e => filters.selectedEmpIds.includes(e.id)).map(e => e.emp_code),
+          departmentId: filters.deptId,
+          locationId: filters.locationId,
+          divisionId: filters.divisionId,
+          groupId: filters.groupId,
+          categoryId: filters.categoryId,
+          classId: filters.classId,
+          designationId: filters.designationId,
+          machineName: filters.machineName,
+          isMissed: filters.punchesFilter === 'MISSED'
         },
         moduleType: currentMode
       });
@@ -164,23 +125,17 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
   };
 
   useEffect(() => {
-    fetchMasterData();
-    fetchLogs();
+    // Only fetch logs when these specifically change
+    const timeout = setTimeout(() => {
+        fetchLogs();
+    }, 500); // debounce fetching
+    return () => clearTimeout(timeout);
   }, [
     currentMode, 
-    fromDate, 
-    toDate, 
-    locationId, 
-    divisionId, 
-    groupId, 
-    deptId, 
-    categoryId, 
-    classId, 
-    designationId, 
-    punchesFilter,
-    machineName,
-    selectedEmpIds
+    filters,
+    employees // Depends on employees for empCodes resolution
   ]);
+
 
   const totalPages = Math.ceil(logs.length / pageSize);
   const currentItems = logs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -229,8 +184,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
     setIsProcessing(true);
     try {
       await invoke('process_attendance', {
-        fromDate,
-        toDate,
+        fromDate: filters.fromDate,
+        toDate: filters.toDate,
         moduleType: currentMode
       });
       toast.success("Attendance processed successfully!");
@@ -441,8 +396,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             </label>
             <input 
               type="date" 
-              value={fromDate}
-              onChange={e => setFromDate(e.target.value)}
+              value={filters.fromDate}
+              onChange={e => setFilters({ fromDate: e.target.value })}
               className="w-full bg-white border border-app-border p-2.5 text-xs rounded-lg focus:ring-2 focus:ring-primary-navy/10 focus:border-primary-navy outline-none transition-all"
             />
           </div>
@@ -452,8 +407,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             </label>
             <input 
               type="date" 
-              value={toDate}
-              onChange={e => setToDate(e.target.value)}
+              value={filters.toDate}
+              onChange={e => setFilters({ toDate: e.target.value })}
               className="w-full bg-white border border-app-border p-2.5 text-xs rounded-lg focus:ring-2 focus:ring-primary-navy/10 focus:border-primary-navy outline-none transition-all"
             />
           </div>
@@ -461,8 +416,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <MultiSearchableSelect 
               label="Location" 
               options={locations.map(l => ({ value: l.id.toString(), label: l.name }))} 
-              value={locationId}
-              onChange={setLocationId}
+              value={filters.locationId}
+              onChange={(locationId) => setFilters({ locationId })}
               placeholder="Select Location"
             />
           </div>
@@ -470,8 +425,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <MultiSearchableSelect 
               label="Division" 
               options={divisions.map(d => ({ value: d.id.toString(), label: d.name }))} 
-              value={divisionId}
-              onChange={setDivisionId}
+              value={filters.divisionId}
+              onChange={(divisionId) => setFilters({ divisionId })}
               placeholder="Select Division"
             />
           </div>
@@ -479,8 +434,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <MultiSearchableSelect 
               label="Group" 
               options={groups.map(g => ({ value: g.id.toString(), label: g.name }))} 
-              value={groupId}
-              onChange={setGroupId}
+              value={filters.groupId}
+              onChange={(groupId) => setFilters({ groupId })}
               placeholder="Select Group"
             />
           </div>
@@ -488,8 +443,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <MultiSearchableSelect 
               label="Department" 
               options={departments.map(d => ({ value: d.id.toString(), label: d.name }))} 
-              value={deptId}
-              onChange={setDeptId}
+              value={filters.deptId}
+              onChange={(deptId) => setFilters({ deptId })}
               placeholder="Select Department"
             />
           </div>
@@ -497,8 +452,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <MultiSearchableSelect 
               label="Machine" 
               options={machines.map(m => ({ value: m.name, label: m.name }))} 
-              value={machineName}
-              onChange={setMachineName}
+              value={filters.machineName}
+              onChange={(machineName) => setFilters({ machineName })}
               placeholder="Select Machine"
             />
           </div>
@@ -506,8 +461,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <MultiSearchableSelect 
               label="Designation" 
               options={designations.map(d => ({ value: d.id.toString(), label: d.name }))} 
-              value={designationId}
-              onChange={setDesignationId}
+              value={filters.designationId}
+              onChange={(designationId) => setFilters({ designationId })}
               placeholder="Select Designation"
             />
           </div>
@@ -515,8 +470,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <MultiSearchableSelect 
               label="Category" 
               options={categories.map(c => ({ value: c.id.toString(), label: c.name }))} 
-              value={categoryId}
-              onChange={setCategoryId}
+              value={filters.categoryId}
+              onChange={(categoryId) => setFilters({ categoryId })}
               placeholder="Select Category"
             />
           </div>
@@ -524,8 +479,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <MultiSearchableSelect 
               label="Class" 
               options={classes.map(c => ({ value: c.id.toString(), label: c.name }))} 
-              value={classId}
-              onChange={setClassId}
+              value={filters.classId}
+              onChange={(classId) => setFilters({ classId })}
               placeholder="Select Class"
             />
           </div>
@@ -533,9 +488,9 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
             <EmployeeSearchSelect 
               label="Employee Filter"
               employees={employees}
-              value={selectedEmpIds.length > 0 ? selectedEmpIds : undefined}
-              selectedIds={selectedEmpIds}
-              onChange={(val) => setSelectedEmpIds(Array.isArray(val) ? val.map(id => Number(id)) : [])}
+              value={filters.selectedEmpIds.length > 0 ? filters.selectedEmpIds : undefined}
+              selectedIds={filters.selectedEmpIds}
+              onChange={(val) => setFilters({ selectedEmpIds: Array.isArray(val) ? val.map(id => Number(id)) : [] })}
               placeholder="Search by name or code..."
               isMulti={true}
             />
@@ -547,8 +502,8 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
                 { value: "ALL", label: "All Records" },
                 { value: "MISSED", label: "Missed Punches Only" }
               ]}
-              value={punchesFilter}
-              onChange={(val) => setPunchesFilter(val as 'ALL' | 'MISSED')}
+              value={filters.punchesFilter}
+              onChange={(val) => setFilters({ punchesFilter: val as 'ALL' | 'MISSED' })}
               placeholder="Filter Punches"
             />
           </div>
@@ -737,19 +692,19 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
         shifts={shifts}
-        selectedEmpIds={selectedEmpIds}
+        selectedEmpIds={filters.selectedEmpIds}
         employees={employees}
         holidays={holidays}
         currentMode={currentMode}
         onComplete={fetchLogs}
-        initialFromDate={fromDate}
-        initialToDate={toDate}
-        deptId={deptId}
-        locationId={locationId}
-        divisionId={divisionId}
-        groupId={groupId}
-        categoryId={categoryId}
-        designationId={designationId}
+        initialFromDate={filters.fromDate}
+        initialToDate={filters.toDate}
+        deptId={filters.deptId}
+        locationId={filters.locationId}
+        divisionId={filters.divisionId}
+        groupId={filters.groupId}
+        categoryId={filters.categoryId}
+        designationId={filters.designationId}
       />
 
       <GhostPunchesModal 
@@ -759,12 +714,12 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
         onComplete={fetchLogs}
         initialMonth={format(new Date(), 'MM-yyyy')}
         filters={{
-          departmentId: deptId,
-          locationId,
-          divisionId,
-          groupId,
-          categoryId,
-          designationId
+          departmentId: filters.deptId,
+          locationId: filters.locationId,
+          divisionId: filters.divisionId,
+          groupId: filters.groupId,
+          categoryId: filters.categoryId,
+          designationId: filters.designationId
         }}
       />
 
@@ -1009,21 +964,16 @@ const BulkEntryModal: React.FC<BulkEntryModalProps> = ({
         moduleType: currentMode
       });
 
-      if (res.status === 'success') {
-        const { summary } = res;
-        toast.success(`Generated ${summary.total_records} records for ${summary.processed_employees} employees`);
-        if (summary.skipped_missing_shift.length > 0) {
-          console.warn("Skipped for missing shift:", summary.skipped_missing_shift);
-          toast.warning(`Skipped ${summary.skipped_missing_shift.length} employees due to missing shift in Master`, {
-            duration: 5000
-          });
-        }
+      if (res.status === 'started' || res.status === 'success') {
+        const { useAttendanceTaskStore } = await import('../../store/attendanceTaskStore');
+        useAttendanceTaskStore.getState().startTask();
+        toast.info(`Bulk attendance generation task started.`);
         onComplete();
         onClose();
       }
     } catch (err) {
       console.error(err);
-      toast.error(err instanceof Error ? err.message : "Failed to generate attendance");
+      toast.error(err instanceof Error ? err.message : "Failed to start generation");
     } finally {
       setIsGenerating(false);
     }

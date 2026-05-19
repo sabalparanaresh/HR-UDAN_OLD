@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Users, ShieldAlert, MonitorPlay, BarChart2, Edit3, Save, X, LayoutDashboard, ChevronRight } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invoke } from '@tauri-apps/api/tauri';
-import ReactGridLayout, { Responsive as ResponsiveGridLayout, useContainerWidth, Layout } from 'react-grid-layout';
+import { invokeCommand as invoke } from '../../services/apiClient';
+import ReactGridLayout, { Responsive as ResponsiveGridLayout, Layout } from 'react-grid-layout';
+import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useDashboardStore, DashboardWidgetConfig } from '../../store/useDashboardStore';
-import { transformChartData } from '../../utils/format/chartEngine';
+import { transformChartData } from '../../utils';
 import CachedStatutoryWarningBanner from '../../components/layout/CachedStatutoryWarningBanner';
 import { DrillDownViewer } from '../../components/dashboard/DrillDownViewer';
+import DashboardWidget from '../../components/dashboard/DashboardWidget';
 
 export interface DrilldownStep {
   id: string;
@@ -52,6 +54,7 @@ function DashboardEngine({ currentUser }: { currentUser: any }) {
   const [layouts, setLayouts] = useState<any>(DEFAULT_LAYOUTS);
   const [widgets, setWidgets] = useState<DashboardWidgetConfig[]>(DEFAULT_WIDGETS);
   const [drilldownPath, setDrilldownPath] = useState<DrilldownStep[]>([{ id: 'root', type: 'DASHBOARD', title: 'Dashboard Overview' }]);
+  const activeRequest = useRef<boolean>(false);
 
   const { width, containerRef, mounted } = useContainerWidth();
 
@@ -73,22 +76,40 @@ function DashboardEngine({ currentUser }: { currentUser: any }) {
     }
   }, [currentUser?.id, currentMode]);
 
-  const fetchDashboard = async (force: boolean = false) => {
+  const fetchDashboard = async (force: boolean = false, isCancelled = { value: false }) => {
     setLoading(true);
+    activeRequest.current = true;
     try {
-      const resp = await invoke('get_dashboard_data', { moduleType: currentMode, force_refresh: force });
-      setData(resp);
+      // Add a timeout using Promise.race
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 10000));
+      const fetchPromise = invoke('get_dashboard_data', { moduleType: currentMode, force_refresh: force });
+      
+      const resp = await Promise.race([fetchPromise, timeoutPromise]);
+      if (!isCancelled.value) setData(resp);
     } catch (err) {
-      console.error(err);
+      if (!isCancelled.value) {
+        console.error('Dashboard fetch failed:', err);
+        // Fallback gracefully to empty state
+        setData({
+           kpis: { total_employees: 0, total_salary: 0, total_net: 0, active_departments: 0 },
+           departmentDistribution: [],
+           trendData: []
+        });
+      }
     } finally {
-      setLoading(false);
+      if (!isCancelled.value) setLoading(false);
+      activeRequest.current = false;
     }
   };
 
   useEffect(() => {
+    const isCancelled = { value: false };
     if (hasAccess) {
-      fetchDashboard();
+      fetchDashboard(false, isCancelled);
     }
+    return () => {
+        isCancelled.value = true;
+    };
   }, [currentMode, hasAccess]);
 
   const onLayoutChange = (layout: any, allLayouts: any) => {
@@ -133,6 +154,19 @@ function DashboardEngine({ currentUser }: { currentUser: any }) {
     }
   };
 
+  const currentDrilldownStep = drilldownPath[drilldownPath.length - 1];
+  
+  const handleNextStep = (step: DrilldownStep) => {
+     setDrilldownPath([...drilldownPath, step]);
+  };
+
+  const widgetData = useMemo(() => ({
+    ...data,
+    deptDist: data?.departmentDistribution || [],
+    kpis: data?.kpis || { total_employees: 0, total_salary: 0, total_net: 0, active_departments: 0 },
+    kpi: data?.kpis || { total_employees: 0, total_salary: 0, total_net: 0, active_departments: 0 }
+  }), [data]);
+
   if (!hasAccess) {
     return (
       <div className="flex items-center justify-center h-64 border border-rose-200 bg-rose-50 rounded-lg">
@@ -149,84 +183,11 @@ function DashboardEngine({ currentUser }: { currentUser: any }) {
     );
   }
 
-  const kpis = data?.kpis || { total_employees: 0, total_salary: 0, total_net: 0, active_departments: 0 };
-  const deptDist = data?.departmentDistribution || [];
+  const kpis = widgetData.kpis;
+  const deptDist = widgetData.deptDist;
   const trendData = data?.trendData || [];
 
-  const renderWidget = (widget: DashboardWidgetConfig) => {
-    if (widget.type === 'KPI') {
-       const v = widget.kpiField ? kpis[widget.kpiField] : 0;
-       const label = widget.title;
-       return (
-          <div 
-            onClick={() => handleKpiClick(widget)}
-            className={`textile-card p-4 bg-white border-app-border flex items-center justify-center flex-col gap-2 h-full w-full ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : 'cursor-pointer hover:shadow-md transition-shadow'}`}
-          >
-             <p className="text-[10px] text-text-muted uppercase font-mono tracking-widest text-center">{label}</p>
-             <p className="text-2xl font-black text-slate-800">
-               {widget.kpiField?.includes('salary') || widget.kpiField?.includes('net') ? `₹${v.toLocaleString()}` : v.toLocaleString()}
-             </p>
-          </div>
-       );
-    }
-
-    let option: any = {};
-    if (widget.type === 'PIE') {
-       option = transformChartData(deptDist, {
-         type: 'pie',
-         categoryField: 'name',
-         valueFields: ['value']
-       });
-    } else if (widget.type === 'LINE') {
-       option = transformChartData(trendData, {
-         type: 'line',
-         categoryField: 'month_year',
-         valueFields: ['gross']
-       });
-       // Inject custom color tweaks
-       if (option.series && option.series[0]) {
-         option.series[0].itemStyle = { color: '#0EA5E9' };
-         option.series[0].areaStyle = { opacity: 0.3 };
-       }
-    } else if (widget.type === 'BAR') {
-       option = transformChartData(deptDist, {
-         type: 'bar',
-         categoryField: 'name',
-         valueFields: ['value']
-       });
-       if (option.series && option.series[0]) {
-         option.series[0].itemStyle = { color: '#1E3A8A', borderRadius: [4, 4, 0, 0] };
-       }
-    } else if (widget.type === 'HEATMAP') {
-       option = transformChartData(data?.[widget.dataSource] || [], {
-         type: 'heatmap',
-         categoryField: 'x', // Need appropriate mappings
-         groupBy: 'y',
-         valueFields: ['value']
-       });
-    }
-
-    return (
-      <div className={`textile-card p-4 bg-white border-app-border h-full flex flex-col ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''}`}>
-        <h3 className="text-[11px] font-black uppercase tracking-widest text-primary-navy border-b border-app-border pb-2 mb-2">
-          {widget.title}
-        </h3>
-        <div className="flex-1 min-h-0 relative">
-          <ReactECharts 
-            option={option} 
-            style={{ height: '100%', width: '100%', position: 'absolute' }} 
-            onEvents={{ click: (p) => handleChartClick(p, widget) }}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  const currentDrilldownStep = drilldownPath[drilldownPath.length - 1];
-
-  const handleNextStep = (step: DrilldownStep) => {
-     setDrilldownPath([...drilldownPath, step]);
-  };
+  // Handled by generic widget renderer in JSX
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -299,7 +260,13 @@ function DashboardEngine({ currentUser }: { currentUser: any }) {
                >
                  {widgets.map(w => (
                    <div key={w.id} className="relative group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white">
-                     {renderWidget(w)}
+                      <DashboardWidget 
+                        widget={w} 
+                        data={widgetData} 
+                        isEditMode={isEditMode}
+                        onKpiClick={handleKpiClick}
+                        onChartClick={handleChartClick}
+                      />
                    </div>
                  ))}
                </ResponsiveGridLayoutAny>

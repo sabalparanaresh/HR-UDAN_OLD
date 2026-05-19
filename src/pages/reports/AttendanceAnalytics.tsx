@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Users, ShieldAlert, MonitorPlay, BarChart2, Edit3, Save, X, Activity, Clock, AlertTriangle, LayoutDashboard } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invoke } from '@tauri-apps/api/tauri';
-import ReactGridLayout, { Responsive as ResponsiveGridLayout, useContainerWidth, Layout } from 'react-grid-layout';
+import { invokeCommand as invoke } from '../../services/apiClient';
+import ReactGridLayout, { Responsive as ResponsiveGridLayout, Layout } from 'react-grid-layout';
+import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useDashboardStore, DashboardWidgetConfig } from '../../store/useDashboardStore';
-import { transformChartData } from '../../utils/format/chartEngine';
+import { transformChartData } from '../../utils';
 import CachedStatutoryWarningBanner from '../../components/layout/CachedStatutoryWarningBanner';
+import DashboardWidget from '../../components/dashboard/DashboardWidget';
 
 const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [
   { id: 'kpi_absenteeism', type: 'KPI', title: 'Absenteeism Rate', dataSource: 'kpi', kpiField: 'absenteeism_rate' },
@@ -47,29 +49,38 @@ function AttendanceAnalytics({ currentUser }: { currentUser: any }) {
   
   const [layouts, setLayouts] = useState<any>(DEFAULT_LAYOUTS);
   const [widgets, setWidgets] = useState<DashboardWidgetConfig[]>(DEFAULT_WIDGETS);
-
+  const activeRequest = useRef<boolean>(false);
+  
   const { width, containerRef, mounted } = useContainerWidth();
   const ResponsiveGridLayoutAny = ResponsiveGridLayout as any;
 
   // RBAC Access Check
   const hasAccess = true; // Handled by App.tsx ProtectedRoute
 
-  const fetchDashboard = async (force: boolean = false) => {
+  const fetchDashboard = async (force: boolean = false, isCancelled = { value: false }) => {
     setLoading(true);
+    activeRequest.current = true;
     try {
       const resp = await invoke('get_attendance_analytics', { moduleType: currentMode, force_refresh: force });
-      setData(resp);
+      if (!isCancelled.value) {
+          setData(resp);
+      }
     } catch (err) {
-      console.error(err);
+      if (!isCancelled.value) console.error(err);
     } finally {
-      setLoading(false);
+      if (!isCancelled.value) setLoading(false);
+      activeRequest.current = false;
     }
   };
 
   useEffect(() => {
+    const isCancelled = { value: false };
     if (hasAccess) {
-      fetchDashboard();
+      fetchDashboard(false, isCancelled);
     }
+    return () => {
+        isCancelled.value = true;
+    };
   }, [currentMode, hasAccess]);
 
   const onLayoutChange = (layout: any, allLayouts: any) => {
@@ -101,98 +112,9 @@ function AttendanceAnalytics({ currentUser }: { currentUser: any }) {
   const deptProductivity = data?.deptProductivity || [];
   const shiftData = data?.shiftData || [];
 
-  const renderWidget = (widget: DashboardWidgetConfig) => {
-    if (widget.type === 'KPI') {
-       const sourceObj = widget.dataSource === 'forecast' ? forecast : kpis;
-       const rawV = widget.kpiField ? sourceObj[widget.kpiField] : 0;
-       
-       let finalV = typeof rawV === 'number' ? rawV.toLocaleString(undefined, { maximumFractionDigits: 1 }) : rawV;
-       if (widget.kpiField === 'absenteeism_rate') finalV += '%';
-       if (widget.kpiField === 'total_overtime_hours' || widget.kpiField === 'predicted_overtime') finalV += ' h';
+  const widgetData = useMemo(() => ({ ...data, kpis, kpi: kpis, forecast }), [data, kpis, forecast]);
 
-       return (
-          <div className={`textile-card p-4 bg-white border-app-border flex items-center justify-center flex-col gap-2 h-full w-full ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''}`}>
-             <p className="text-[10px] text-text-muted uppercase font-mono tracking-widest text-center">{widget.title}</p>
-             <p className="text-2xl font-black text-slate-800">
-               {finalV}
-             </p>
-          </div>
-       );
-    }
-
-    let option: any = {};
-    if (widget.type === 'PIE') {
-       option = transformChartData(shiftData, {
-         type: 'pie',
-         categoryField: 'shift_name',
-         valueFields: ['absences']
-       });
-       if (option.series && option.series[0]) {
-           option.series[0].radius = ['40%', '70%'];
-           // Set vibrant colors
-           option.color = ['#ef4444', '#f97316', '#3b82f6', '#8b5cf6', '#10b981'];
-       }
-    } else if (widget.type === 'LINE') {
-       option = transformChartData(trendData, {
-         type: 'line',
-         categoryField: 'date',
-         valueFields: ['present', 'absent', 'leave']
-       });
-       if (option.series && option.series[0]) {
-         option.series[0].itemStyle = { color: '#10b981' }; 
-         option.series[0].areaStyle = { opacity: 0.1 };
-         if (option.series[1]) {
-             option.series[1].itemStyle = { color: '#ef4444' };
-             option.series[1].areaStyle = { opacity: 0.1 };
-         }
-         if (option.series[2]) {
-             option.series[2].itemStyle = { color: '#f59e0b' };
-         }
-       }
-    } else if (widget.type === 'BAR') {
-       if (widget.dataSource === 'heatmapData') {
-           const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-           const formattedData = (data?.heatmapData || []).map((row: any) => ({
-             day: days[row.day_of_week] || 'Unknown',
-             absences: row.absent_count
-           }));
-           option = transformChartData(formattedData, {
-             type: 'bar',
-             categoryField: 'day',
-             valueFields: ['absences']
-           });
-           if (option.series && option.series[0]) {
-             option.series[0].itemStyle = { color: '#f59e0b', borderRadius: [4, 4, 0, 0] };
-           }
-       } else {
-           option = transformChartData(deptProductivity, {
-             type: 'bar',
-             categoryField: 'department_name',
-             valueFields: ['avg_hours']
-           });
-           if (option.series && option.series[0]) {
-             option.series[0].itemStyle = { color: '#3b82f6', borderRadius: [4, 4, 0, 0] };
-           }
-           // Add a markLine for the 8hr target
-           if (option.series && option.series.length > 0) { option.series[0].markLine = {
-                   data: [{ yAxis: 8, name: 'Target (8h)' }],
-                   lineStyle: { color: '#10b981', type: 'dashed' }
-               };
-           }
-       }
-    }
-
-    return (
-      <div className={`textile-card p-4 bg-white border-app-border h-full flex flex-col ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''}`}>
-        <h3 className="text-[11px] font-black uppercase tracking-widest text-primary-navy border-b border-app-border pb-2 mb-2">
-          {widget.title}
-        </h3>
-        <div className="flex-1 min-h-0 relative">
-          <ReactECharts option={option} style={{ height: '100%', width: '100%', position: 'absolute' }} />
-        </div>
-      </div>
-    );
-  };
+  // Handled by generic widget renderer in JSX
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -243,7 +165,7 @@ function AttendanceAnalytics({ currentUser }: { currentUser: any }) {
            >
              {widgets.map(w => (
                <div key={w.id} className="relative group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white">
-                 {renderWidget(w)}
+                 <DashboardWidget widget={w} data={widgetData} isEditMode={isEditMode} />
                </div>
              ))}
            </ResponsiveGridLayoutAny>

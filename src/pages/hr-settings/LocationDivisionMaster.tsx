@@ -14,11 +14,11 @@ import {
   Save,
   Building2
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { Pagination } from '../../components/common/Pagination';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -165,7 +165,7 @@ export default function LocationDivisionMaster() {
     reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = await XLSX.read(bstr, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws);
 

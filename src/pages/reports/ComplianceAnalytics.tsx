@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Users, ShieldAlert, FileCheck, Save, X, Activity, AlertTriangle, LayoutDashboard, Database, TrendingUp, AlertCircle, FileText } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invoke } from '@tauri-apps/api/tauri';
-import ReactGridLayout, { Responsive as ResponsiveGridLayout, useContainerWidth, Layout } from 'react-grid-layout';
+import { invokeCommand as invoke } from '../../services/apiClient';
+import ReactGridLayout, { Responsive as ResponsiveGridLayout, Layout } from 'react-grid-layout';
+import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useDashboardStore, DashboardWidgetConfig } from '../../store/useDashboardStore';
-import { transformChartData } from '../../utils/format/chartEngine';
+import { transformChartData } from '../../utils';
 import CachedStatutoryWarningBanner from '../../components/layout/CachedStatutoryWarningBanner';
+import DashboardWidget from '../../components/dashboard/DashboardWidget';
 
 const formatCurrency = (val: number | undefined) => {
     if (val === undefined || val === null) return '₹ 0';
@@ -46,6 +48,7 @@ function ComplianceAnalytics({ currentUser }: { currentUser: any }) {
   
   const [layouts, setLayouts] = useState<any>(DEFAULT_LAYOUTS);
   const [widgets, setWidgets] = useState<DashboardWidgetConfig[]>(DEFAULT_WIDGETS);
+  const activeRequest = useRef<boolean>(false);
 
   const { width, containerRef, mounted } = useContainerWidth();
   const ResponsiveGridLayoutAny = ResponsiveGridLayout as any;
@@ -53,22 +56,28 @@ function ComplianceAnalytics({ currentUser }: { currentUser: any }) {
   // RBAC Access Check
   const hasAccess = true; // Handled by App.tsx ProtectedRoute
 
-  const fetchDashboard = async (force: boolean = false) => {
+  const fetchDashboard = async (force: boolean = false, isCancelled = { value: false }) => {
     setLoading(true);
+    activeRequest.current = true;
     try {
       const resp = await invoke('get_compliance_analytics', { moduleType: currentMode, force_refresh: force });
-      setData(resp);
+      if (!isCancelled.value) setData(resp);
     } catch (err) {
-      console.error(err);
+      if (!isCancelled.value) console.error(err);
     } finally {
-      setLoading(false);
+      if (!isCancelled.value) setLoading(false);
+      activeRequest.current = false;
     }
   };
 
   useEffect(() => {
+    const isCancelled = { value: false };
     if (hasAccess) {
-      fetchDashboard();
+      fetchDashboard(false, isCancelled);
     }
+    return () => {
+        isCancelled.value = true;
+    };
   }, [currentMode, hasAccess]);
 
   const onLayoutChange = (layout: any, allLayouts: any) => {
@@ -100,107 +109,10 @@ function ComplianceAnalytics({ currentUser }: { currentUser: any }) {
   const breakdownData = data?.breakdownData || [];
   const riskData = data?.riskData || [];
   const riskDataCount = { count: riskData.length };
+  
+  const widgetData = useMemo(() => ({ ...data, riskDataCount, gratuity, bonus }), [data, riskDataCount.count, gratuity, bonus]);
 
-  const renderWidget = (widget: DashboardWidgetConfig) => {
-    if (widget.type === 'KPI') {
-       let sourceObj: any = {};
-       if (widget.dataSource === 'gratuity') sourceObj = gratuity;
-       else if (widget.dataSource === 'bonus') sourceObj = bonus;
-       else if (widget.dataSource === 'riskDataCount') sourceObj = riskDataCount;
-
-       const rawV = widget.kpiField ? sourceObj[widget.kpiField] : 0;
-       
-       const finalV = typeof rawV === 'number' && widget.id !== 'kpi_risk_count'
-           ? formatCurrency(rawV) 
-           : rawV;
-
-       return (
-          <div className={`textile-card p-4 bg-white border-app-border flex items-center justify-center flex-col gap-2 h-full w-full ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''}`}>
-             <p className="text-[10px] text-text-muted uppercase font-mono tracking-widest text-center">{widget.title}</p>
-             <p className={`text-2xl font-black ${widget.id === 'kpi_risk_count' && rawV > 0 ? 'text-rose-600' : 'text-slate-800'}`}>
-               {finalV}
-             </p>
-          </div>
-       );
-    }
-    
-    if (widget.type === 'TABLE' && widget.dataSource === 'riskData') {
-      return (
-        <div className={`textile-card p-4 bg-white border-app-border h-full flex flex-col ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''}`}>
-        <h3 className="text-[11px] font-black uppercase tracking-widest text-rose-600 border-b border-app-border pb-2 mb-2 flex items-center gap-2">
-          <AlertCircle size={14} /> {widget.title}
-        </h3>
-        <div className="flex-1 overflow-auto">
-          {riskData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full opacity-50">
-               <FileCheck size={32} className="mb-2 text-emerald-600" />
-               <p className="text-sm font-mono">No known compliance risks identified.</p>
-            </div>
-          ) : (
-            <table className="w-full text-left border-collapse">
-               <thead>
-                 <tr>
-                    <th className="text-[10px] uppercase font-bold text-gray-500 pb-2 border-b">Emp Code</th>
-                    <th className="text-[10px] uppercase font-bold text-gray-500 pb-2 border-b">Name</th>
-                    <th className="text-[10px] uppercase font-bold text-gray-500 pb-2 border-b text-right">Risk Factor</th>
-                 </tr>
-               </thead>
-               <tbody>
-                  {riskData.map((r: any, idx: number) => (
-                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
-                       <td className="py-2 text-xs font-mono">{r.emp_code}</td>
-                       <td className="py-2 text-xs">{r.name}</td>
-                       <td className="py-2 text-xs text-right text-rose-600 font-bold">{r.risk_type}</td>
-                    </tr>
-                  ))}
-               </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-      );
-    }
-
-    let option: any = {};
-    if (widget.type === 'LINE') {
-       option = transformChartData(trendData, {
-         type: 'line',
-         categoryField: 'month',
-         valueFields: ['pf_amount', 'esi_amount']
-       });
-       if (option.series && option.series[0]) {
-         option.series[0].name = 'PF Liability';
-         option.series[0].itemStyle = { color: '#3b82f6' }; 
-         option.series[0].areaStyle = { opacity: 0.1 };
-         if (option.series[1]) {
-             option.series[1].name = 'ESI Liability';
-             option.series[1].itemStyle = { color: '#f59e0b' };
-             option.series[1].areaStyle = { opacity: 0.1 };
-         }
-       }
-       option.legend = { show: true, bottom: 0 };
-    } else if (widget.type === 'BAR') {
-       option = transformChartData(breakdownData, {
-         type: 'bar',
-         categoryField: 'head_name',
-         valueFields: ['total_amount']
-       });
-       if (option.series && option.series[0]) {
-         option.series[0].itemStyle = { color: '#ef4444', borderRadius: [4, 4, 0, 0] };
-       }
-    }
-
-    return (
-      <div className={`textile-card p-4 bg-white border-app-border h-full flex flex-col ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''}`}>
-        <h3 className="text-[11px] font-black uppercase tracking-widest text-primary-navy border-b border-app-border pb-2 mb-2">
-          {widget.title}
-        </h3>
-        <div className="flex-1 min-h-0 relative pb-4">
-          <ReactECharts option={option} style={{ height: '100%', width: '100%', position: 'absolute' }} />
-        </div>
-      </div>
-    );
-  };
+  // Handled by generic widget renderer in JSX
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -251,7 +163,7 @@ function ComplianceAnalytics({ currentUser }: { currentUser: any }) {
            >
              {widgets.map(w => (
                <div key={w.id} className="relative group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white">
-                 {renderWidget(w)}
+                 <DashboardWidget widget={w} data={widgetData} isEditMode={isEditMode} />
                </div>
              ))}
            </ResponsiveGridLayoutAny>

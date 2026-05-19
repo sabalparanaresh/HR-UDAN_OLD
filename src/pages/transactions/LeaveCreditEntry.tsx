@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { 
   RefreshCw, Download, CheckCircle2, AlertCircle, Loader2, 
   Calendar, User, Search, Filter, Plus, 

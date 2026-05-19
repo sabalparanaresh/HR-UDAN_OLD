@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useModule } from '../../contexts/ModuleContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
+import { useRoles } from '../../hooks/useRoles';
 
 export const SYSTEM_PAGES = {
   primary: [
@@ -25,28 +26,25 @@ export const SYSTEM_PAGES = {
   ]
 };
 
-export default function RolesPermissions() {
+export default React.memo(function RolesPermissions() {
     const queryClient = useQueryClient();
+    const { currentMode } = useModule();
     const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
     const [activeModuleTab, setActiveModuleTab] = useState<'K' | 'P'>('K');
     const [permissionsState, setPermissionsState] = useState<any[]>([]);
     
-    const { data: rolesData, isLoading: rolesLoading } = useQuery({
-        queryKey: ['rolesList'],
-        queryFn: async () => {
-             const res = await invoke<any>('user_crud', { operation: 'get_roles' });
-             return { success: true, data: res };
-        }
-    });
+    const { data: rolesData, isLoading: rolesLoading } = useRoles(currentMode);
 
     const { data: permsData, isLoading: permsLoading } = useQuery({
-        queryKey: ['rolePermissions', selectedRoleId],
+        queryKey: ['rolePermissions', selectedRoleId, currentMode],
         queryFn: async () => {
             if (!selectedRoleId) return { data: [] };
-            const res = await invoke<any>('user_crud', { operation: 'get_role_permissions', id: selectedRoleId });
+            const res = await invoke<any>('user_crud', { operation: 'get_role_permissions', id: selectedRoleId, moduleType: currentMode });
             return { success: true, data: res };
         },
         enabled: !!selectedRoleId,
+        staleTime: 1000 * 60 * 5, // 5 mins
+        gcTime: 1000 * 60 * 30, // 30 mins
     });
 
     React.useEffect(() => {
@@ -60,23 +58,28 @@ export default function RolesPermissions() {
             await invoke('user_crud', { 
                 operation: 'update_role_permissions', 
                 id: selectedRoleId, 
-                data: { permissions: perms } 
+                data: { permissions: perms },
+                moduleType: currentMode
             });
         },
         onSuccess: () => {
             toast.success('Permissions updated successfully!');
-            queryClient.invalidateQueries({ queryKey: ['rolePermissions', selectedRoleId] });
+            queryClient.invalidateQueries({ queryKey: ['rolePermissions', selectedRoleId, currentMode] });
         },
         onError: (e: Error) => {
             toast.error(e.message);
         }
     });
 
-    const { currentMode } = useModule();
-    const roles = (rolesData?.data || []).filter((r: any) => currentMode === 'P' || r.name !== 'Auditor');
-    const selectedRole = roles.find((r: any) => r.id === selectedRoleId);
+    const roles = useMemo(() => {
+        return (rolesData?.data || []).filter((r: any) => currentMode === 'P' || r.name !== 'Auditor');
+    }, [rolesData?.data, currentMode]);
+    
+    const selectedRole = useMemo(() => {
+        return roles.find((r: any) => r.id === selectedRoleId);
+    }, [roles, selectedRoleId]);
 
-    const togglePermission = (pageKey: string, moduleCode: string, menuGroup: string, field: 'can_view'|'can_insert'|'can_edit'|'can_delete') => {
+    const togglePermission = React.useCallback((pageKey: string, moduleCode: string, menuGroup: string, field: 'can_view'|'can_insert'|'can_edit'|'can_delete') => {
         if (selectedRole?.name === 'SUPERADMIN' || selectedRole?.name === 'AUDITOR') return; // Read-only UI for auditor editing
 
         setPermissionsState(prev => {
@@ -102,7 +105,7 @@ export default function RolesPermissions() {
                 }];
             }
         });
-    };
+    }, [selectedRole]);
 
     const getPerm = (pageKey: string, moduleCode: string, field: 'can_view'|'can_insert'|'can_edit'|'can_delete') => {
         if (selectedRole?.name === 'SUPERADMIN') return true;
@@ -159,7 +162,7 @@ export default function RolesPermissions() {
                         <div className="p-4 border-b flex justify-between items-center">
                             <h3 className="font-bold text-gray-800 text-lg">{selectedRole?.name} Permissions</h3>
                             <div className="flex gap-2">
-                                <button className="px-3 py-1.5 text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 rounded flex items-center gap-2" onClick={() => queryClient.invalidateQueries({ queryKey: ['rolePermissions', selectedRoleId] })}>
+                                <button className="px-3 py-1.5 text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 rounded flex items-center gap-2" onClick={() => queryClient.invalidateQueries({ queryKey: ['rolePermissions', selectedRoleId, currentMode] })}>
                                     <RefreshCw className="w-4 h-4" /> Reset
                                 </button>
                                 <button 
@@ -264,4 +267,4 @@ export default function RolesPermissions() {
             </div>
         </div>
     );
-}
+});

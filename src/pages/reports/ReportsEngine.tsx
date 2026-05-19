@@ -16,21 +16,42 @@ import {
   HardDriveDownload
 } from 'lucide-react';
 import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
+import { 
+  ModuleRegistry, 
+  InfiniteRowModelModule, 
+  ClientSideRowModelModule,
+  ValidationModule,
+  PaginationModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  CustomFilterModule,
+  CsvExportModule
+} from 'ag-grid-community';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { toast } from 'sonner';
 
 import { ReportFilterEngine } from '../../components/reports/ReportFilterEngine';
-import { formulaEngine } from '../../utils/calculation/FormulaEngine';
+import { formulaEngine } from '../../utils';
 import { FilterDTO, serializeToBackendFilters } from '../../types/ReportFilters';
 import { useReportStore } from '../../store/useReportStore';
 import { DistributionModal } from '../../components/reports/DistributionModal';
 import { FormulaBuilderModal } from '../../components/reports/FormulaBuilderModal';
 import CachedStatutoryWarningBanner from '../../components/layout/CachedStatutoryWarningBanner';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  InfiniteRowModelModule,
+  PaginationModule,
+  ValidationModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  CustomFilterModule,
+  CsvExportModule
+]);
 
 const TABLES = [
   { id: 'employees', name: 'Employee Master', cols: ['id', 'emp_code', 'name', 'department_id', 'designation_id', 'status', 'created_at'] },
@@ -185,53 +206,90 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
     });
   }, [templates, currentUser]);
 
-  const executeReport = async (offset = 0) => {
+  const saveSnapshot = async () => {
+    if (!hasExportAccess) {
+       toast.error("Access Denied for snapshots");
+       return;
+    }
     setLoading(true);
     try {
-      const colsObj = selectedCols.map((c: string) => ({ field: c }));
-      const filtersArr = serializeToBackendFilters(appliedFilters);
-      
-      const req = {
-        base_table: baseTable,
+      await invoke('save_report_snapshot', {
+        template_id: activeTemplate?.id || `TEMP-${baseTable}`,
         module_type: currentMode,
-        columns: colsObj,
-        filters: filtersArr.filter(f => f && f.value !== '' && f.value != null),
-        pagination: { limit: pagination.limit, offset },
-        sorts: activeState.sorts || []
-      };
-      
-      let res;
-      if (!isConnected && currentMode === 'K') {
-         // Fallback logic block: if connection_status === 'DISCONNECTED', fetch data from the last synced snapshot table
-         try {
-           const snapRes = await invoke('get_report_snapshots', { template_id: 'SYSTEM_P_SYNC', module_type: 'P' }) as any[];
-           if (snapRes && snapRes.length > 0) {
-              const snapData = await invoke('get_report_snapshot_data', { snapshot_id: snapRes[0].id, module_type: 'P' }) as any[];
-              res = { data: snapData, total: snapData.length };
-           } else {
-             // Fallback to normal query if no snapshot
-             res = await invoke('execute_report_query', req) as any;
-           }
-         } catch(e) {
-             res = await invoke('execute_report_query', req) as any;
-         }
-      } else {
-        res = await invoke('execute_report_query', req) as any;
-      }
-
-      setData(res?.data || []);
-      setTotalRows(res?.total || 0);
-      setStoreState({ pagination: { ...pagination, offset } });
+        base_table: baseTable,
+        data: null
+      });
+      toast.success("Snapshot saved successfully!");
     } catch (e: any) {
-      toast.error(e.message || "Query failed");
+      toast.error(e.message || "Failed to save snapshot");
     } finally {
       setLoading(false);
     }
   };
 
+  const executeReport = useCallback(() => {
+    if (gridRef.current?.api) {
+      gridRef.current.api.purgeInfiniteCache();
+    }
+  }, []);
+
+  const onGridReady = useCallback((params: any) => {
+    const dataSource = {
+      getRows: async (rowParams: any) => {
+        try {
+          const limit = rowParams.endRow - rowParams.startRow;
+          const offset = rowParams.startRow;
+          
+          const colsObj = selectedCols.map((c: string) => ({ field: c }));
+          const filtersArr = serializeToBackendFilters(appliedFilters);
+          
+          // Map AG Grid Sort Model
+          const sorts = rowParams.sortModel ? rowParams.sortModel.map((s: any) => ({
+            field: s.colId,
+            direction: s.sort.toUpperCase()
+          })) : [];
+
+          const req = {
+            base_table: baseTable,
+            module_type: currentMode,
+            columns: colsObj,
+            filters: filtersArr.filter(f => f && f.value !== '' && f.value != null),
+            pagination: { limit, offset },
+            sorts: sorts
+          };
+          
+          let res;
+          if (!isConnected && currentMode === 'K') {
+             try {
+               const snapRes = await invoke('get_report_snapshots', { template_id: 'SYSTEM_P_SYNC', module_type: 'P' }) as any[];
+               if (snapRes && snapRes.length > 0) {
+                  const snapData = await invoke('get_report_snapshot_data', { snapshot_id: snapRes[0].id, module_type: 'P' }) as any[];
+                  res = { data: snapData.slice(offset, offset + limit), total: snapData.length };
+               } else {
+                 res = await invoke('execute_report_query', req) as any;
+               }
+             } catch(e) {
+                 res = await invoke('execute_report_query', req) as any;
+             }
+          } else {
+            res = await invoke('execute_report_query', req) as any;
+          }
+
+          setTotalRows(res?.total || 0);
+          rowParams.successCallback(res?.data || [], res?.total || 0);
+        } catch (e: any) {
+          console.error("Query failed", e);
+          toast.error(e.message || "Query failed");
+          rowParams.failCallback();
+        }
+      }
+    };
+    params.api.setGridOption('datasource', dataSource);
+  }, [baseTable, selectedCols, appliedFilters, currentMode, isConnected]);
+
   useEffect(() => {
-    executeReport(pagination.offset);
-  }, [baseTable, selectedCols, appliedFilters, currentMode]); // Remove pagination.offset/limit to prevent duplicate executions, handle manually when paging
+    executeReport();
+  }, [baseTable, selectedCols, appliedFilters, currentMode, executeReport]);
 
   const handleSaveTemplate = () => {
     setSaveTemplateName("");
@@ -477,6 +535,9 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
            }} disabled={!hasExportAccess} className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-purple-700 transition-colors shadow-sm opacity-90 disabled:opacity-50 disabled:bg-slate-300 disabled:text-slate-500">
              <HardDriveDownload size={16} /> Distribute...
            </button>
+           <button onClick={saveSnapshot} disabled={!hasExportAccess} className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors shadow-sm opacity-90 disabled:opacity-50 disabled:bg-slate-300 disabled:text-slate-500">
+             <Database size={16} /> Snapshot
+           </button>
            <button onClick={handleExportDataExcel} disabled={!hasExportAccess} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm opacity-90 disabled:opacity-50 disabled:bg-slate-300 disabled:text-slate-500">
              <FileSpreadsheet size={16} /> Export Excel
            </button>
@@ -699,12 +760,14 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
                   <AgGridReact
                     ref={gridRef}
                     theme="legacy"
-                    rowData={data}
+                    rowModelType="infinite"
+                    onGridReady={onGridReady}
                     columnDefs={agColumns}
                     rowSelection="multiple"
                     onRowClicked={onRowClicked}
                     pagination={true}
                     paginationPageSize={100}
+                    cacheBlockSize={100}
                     paginationPageSizeSelector={[25, 50, 100, 500, 1000]}
                     domLayout="normal"
                   />

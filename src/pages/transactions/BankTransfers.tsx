@@ -14,7 +14,7 @@ import {
   ChevronsRight
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';

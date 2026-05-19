@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePermission } from '../../hooks/useRBAC';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { 
   Upload, 
   Database, 
@@ -21,7 +21,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { useOutletContext } from 'react-router-dom';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -61,25 +61,6 @@ export default function PincodeMaster() {
   const canCreate = usePermission('settings.insert') || usePermission('statutorySettings.insert');
   const canEdit = usePermission('settings.edit') || usePermission('statutorySettings.edit');
   const canDelete = usePermission('settings.delete') || usePermission('statutorySettings.delete');
-  
-  const handleRepairSync = async () => {
-    setIsLoading(true);
-    try {
-      const resp = await invoke('master_crud', {
-        tableName: 'pincode_master',
-        operation: 'sync_all_to_statutory',
-        moduleType: 'K'
-      }) as any;
-      const now = new Date().toISOString();
-      setLastSyncedAt(now);
-      localStorage.setItem('pincode_master_last_sync', now);
-      toast.success(`Successfully mirrored ${resp.synced} records to Statutory Module`);
-    } catch (err: any) {
-      toast.error(err.error || "Failed to repair mirror sync");
-    } finally {
-      setIsLoading(false);
-    }
-  };
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -194,7 +175,7 @@ export default function PincodeMaster() {
         if (!arrayBuffer) return;
         
         const data = new Uint8Array(arrayBuffer as ArrayBuffer);
-        const wb = XLSX.read(data, { type: 'array' });
+        const wb = await XLSX.read(data, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const jsonData = XLSX.utils.sheet_to_json(ws) as any[];
@@ -373,17 +354,7 @@ export default function PincodeMaster() {
         </div>
 
         <div className="flex items-center gap-3">
-          {currentMode === 'K' && (
-            <button
-              onClick={handleRepairSync}
-              disabled={isLoading}
-              className="flex items-center gap-2 px-6 py-2.5 text-xs font-bold transition-all rounded-lg border-2 border-primary-navy bg-white text-primary-navy hover:bg-slate-50"
-              title="Push all primary data to statutory database"
-            >
-              {isLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              MIRROR TO STATUTORY
-            </button>
-          )}
+
           <button
             onClick={handleSyncGovIn}
             disabled={isSyncing}

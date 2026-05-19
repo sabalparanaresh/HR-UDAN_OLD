@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { format } from 'date-fns';
 import { AlertTriangle, Info, Calendar } from 'lucide-react';
 import { toast } from 'sonner';

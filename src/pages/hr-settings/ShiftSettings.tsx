@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { 
   Clock, 
   Plus, 
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -218,7 +218,7 @@ export default function ShiftSettings() {
   };
 
   const downloadTemplate = () => {
-    const headers = [['name', 'description', 'is_24_hour_cycle', 'Shift Start time', 'Shift End time', 'Total Working Hours', 'Grace period (mins)', 'From', 'To', 'Atd. Value', 'From', 'To', 'Atd. Value', 'From', 'To', 'Atd. Value', 'From', 'To', 'Atd. Value', 'allocation_type', 'status']];
+    const headers = [['name', 'description', 'is_24_hour_cycle', 'Shift Start time', 'Shift End time', 'Total Working Hours', 'Grace period (mins)', 'From', 'To', 'Atd. Value', 'From', 'To', 'Atd. Value', 'From', 'To', 'Atd. Value', 'From', 'To', 'Atd. Value', 'Type', 'status']];
     const example = [[
       'WORKER 12 HRS', 
       'General Shift', 
@@ -250,7 +250,7 @@ export default function ShiftSettings() {
     reader.onload = async (evt) => {
       const bstr = evt.target?.result;
       if (!bstr) return;
-      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wb = await XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       try {
@@ -260,11 +260,15 @@ export default function ShiftSettings() {
           return;
         }
 
+        const headersRow = (rows[0] || []).map(h => String(h || '').toLowerCase().trim());
+        const typeIndex = headersRow.indexOf('type');
+        const statusIndex = headersRow.indexOf('status');
+
         const parseTimeValue = (val: any) => {
           if (!val && val !== 0) return null;
           if (typeof val === 'number') {
             const totalMinutes = Math.round(val * 24 * 60);
-          return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 };
+            return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 };
           }
           const s = String(val).trim();
           if (!s) return null;
@@ -288,8 +292,13 @@ export default function ShiftSettings() {
           const endTime = formatTimeStr(row[4], '20:00');
           const totalWorkingHours = parseFloat(row[5]) || 12.0;
           const gracePeriodMins = parseInt(row[6]) || 15;
-          const allocationType = row[19] || 'KP';
-          const status = String(row[20] || '').toLowerCase() === 'active' || row[20] == '1' ? 1 : 0;
+          const rawAlloc = String(typeIndex !== -1 ? row[typeIndex] : '').toUpperCase().trim();
+          let allocationType = 'KP';
+          if (rawAlloc.includes('K_ONLY') || rawAlloc === 'K ONLY' || rawAlloc === 'K') allocationType = 'K_ONLY';
+          else if (rawAlloc.includes('STATUTORY') || rawAlloc === 'P') allocationType = 'STATUTORY';
+
+          const statusRaw = String(statusIndex !== -1 ? row[statusIndex] : '').trim().toLowerCase();
+          const status = statusRaw === 'active' || statusRaw === '1' ? 1 : 0;
 
           const rules: AttendanceRule[] = [];
           for (let i = 0; i < 4; i++) {

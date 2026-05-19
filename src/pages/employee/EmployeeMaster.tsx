@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import * as tauri from '@tauri-apps/api/tauri';
+import { invokeCommand } from '../../services/apiClient';
 
-// Safe wrapper for convertFileSrc to handle non-Tauri environments
+// Identity mapping for paths in web mode
 const safeConvertFileSrc = (path: string) => {
   if (!path) return '';
   try {
-    return tauri && typeof tauri.convertFileSrc === 'function' ? tauri.convertFileSrc(path) : path;
+    return path;
   } catch (e) {
     return path;
   }
@@ -170,7 +170,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
 
   const fetchRevisionHistory = async (empId: number) => {
     try {
-      const history = await tauri.invoke<any[]>('get_salary_revision_history', { empId, moduleType: currentMode });
+      const history = await invokeCommand<any[]>('get_salary_revision_history', { empId, moduleType: currentMode });
       setRevisionHistory(history);
     } catch (err) {
       console.error("Failed to fetch revision history", err);
@@ -181,7 +181,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (!selectedEmployeeId) return;
     try {
       setIsLoading(true);
-      await tauri.invoke('record_salary_revision', {
+      await invokeCommand('record_salary_revision', {
         empId: parseInt(selectedEmployeeId),
         newRate: revisionData.newRate,
         effectiveDate: revisionData.effectiveDate,
@@ -572,7 +572,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
   const fetchEmployees = async (pageIndex = employeePageIndex, pageSize = employeePageSize, search = employeeSearch, filters = employeeFilters) => {
     try {
       const ts = Date.now();
-      const result = await tauri.invoke<any>('master_crud', { 
+      const result = await invokeCommand<any>('master_crud', { 
         tableName: 'employees', 
         operation: 'list', 
         moduleType: currentMode,
@@ -616,20 +616,20 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     try {
       const ts = Date.now();
       const [wd, cls, cat, hierarchy, grp, dpt, shft, config, des, et, es, slabs, heads, cc] = await Promise.all([
-        tauri.invoke<any[]>('master_crud', { tableName: 'working_day_types', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any[]>('master_crud', { tableName: 'classes', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any[]>('master_crud', { tableName: 'categories', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any[]>('master_crud', { tableName: 'org_hierarchy', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any[]>('master_crud', { tableName: 'groups', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any[]>('master_crud', { tableName: 'departments', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any[]>('master_crud', { tableName: 'shifts', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any>('master_crud', { tableName: 'settings', operation: 'get', id: 'employee_code_manual_entry', moduleType: currentMode, _v: ts }).catch(() => ({ value: '0' })),
-        tauri.invoke<any[]>('master_crud', { tableName: 'designations', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any[]>('master_crud', { tableName: 'employment_types', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<any[]>('master_crud', { tableName: 'employee_statuses', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        tauri.invoke<SalarySlab[]>('master_crud', { tableName: 'salary_slabs', operation: 'list', moduleType: 'P', _v: ts }).catch(() => []),
-        tauri.invoke<SalaryHead[]>('master_crud', { tableName: 'salary_heads', operation: 'list', moduleType: 'P', _v: ts }).catch(() => []),
-        tauri.invoke<any>('get_company_config', { module_type: currentMode, _v: ts }).catch(() => null)
+        invokeCommand<any[]>('master_crud', { tableName: 'working_day_types', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any[]>('master_crud', { tableName: 'classes', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any[]>('master_crud', { tableName: 'categories', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any[]>('master_crud', { tableName: 'org_hierarchy', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any[]>('master_crud', { tableName: 'groups', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any[]>('master_crud', { tableName: 'departments', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any[]>('master_crud', { tableName: 'shifts', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any>('master_crud', { tableName: 'settings', operation: 'get', id: 'employee_code_manual_entry', moduleType: currentMode, _v: ts }).catch(() => ({ value: '0' })),
+        invokeCommand<any[]>('master_crud', { tableName: 'designations', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any[]>('master_crud', { tableName: 'employment_types', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<any[]>('master_crud', { tableName: 'employee_statuses', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
+        invokeCommand<SalarySlab[]>('master_crud', { tableName: 'salary_slabs', operation: 'list', moduleType: 'P', _v: ts }).catch(() => []),
+        invokeCommand<SalaryHead[]>('master_crud', { tableName: 'salary_heads', operation: 'list', moduleType: 'P', _v: ts }).catch(() => []),
+        invokeCommand<any>('get_company_config', { module_type: currentMode, _v: ts }).catch(() => null)
       ]);
 
       setWorkingDayTypes(Array.isArray(wd) ? wd : []);
@@ -679,7 +679,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (selectedDeptId) {
       const fetchDeptSettings = async () => {
         try {
-          const settings = await tauri.invoke<any>('get_dept_settings', {
+          const settings = await invokeCommand<any>('get_dept_settings', {
             deptId: parseInt(selectedDeptId),
             moduleType: currentMode
           });
@@ -702,7 +702,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (selectedDeptId && selectedDesignation) {
       const fetchStdRate = async () => {
         try {
-          const data = await tauri.invoke<any>('get_dept_standard_rates', {
+          const data = await invokeCommand<any>('get_dept_standard_rates', {
             deptId: parseInt(selectedDeptId),
             designation: selectedDesignation,
             moduleType: currentMode
@@ -735,7 +735,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (!value) return;
     
     try {
-      const result = await tauri.invoke<any>('check_duplicate', {
+      const result = await invokeCommand<any>('check_duplicate', {
         field,
         value,
         excludeId: selectedEmployeeId ? parseInt(selectedEmployeeId) : undefined,
@@ -824,7 +824,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
 
   const fetchWaterfall = async (empId: number) => {
     try {
-      const result = await tauri.invoke<any>('process_waterfall_distribution', {
+      const result = await invokeCommand<any>('process_waterfall_distribution', {
         parent_id: empId,
         month: new Date().toISOString().slice(0, 7), // YYYY-MM
         moduleType: currentMode
@@ -875,7 +875,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
       }
 
       if (currentMode === 'P') {
-        const complianceData = await tauri.invoke<any>('check_min_wage', {
+        const complianceData = await invokeCommand<any>('check_min_wage', {
           amount: data.wage_amount,
           moduleType: currentMode
         });
@@ -896,7 +896,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
       let finalPhotoPath = data.photo_path;
       if (photoPreview && photoPreview.startsWith('data:image')) {
         try {
-          const result = await tauri.invoke<any>('save_employee_asset', {
+          const result = await invokeCommand<any>('save_employee_asset', {
             base64: photoPreview,
             emp_code: data.emp_code
           });
@@ -935,7 +935,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
         Object.entries(payload).filter(([_, v]) => v !== null && v !== undefined)
       );
       
-      await tauri.invoke('master_crud', {
+      await invokeCommand('master_crud', {
         tableName: 'employees',
         operation: selectedEmployeeId ? 'update' : 'create',
         id: selectedEmployeeId ? parseInt(selectedEmployeeId) : undefined,
@@ -993,7 +993,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
 
     setIsSyncing(true);
     try {
-      await tauri.invoke('sync_employee_to_pakka', {
+      await invokeCommand('sync_employee_to_pakka', {
         employee_id: syncEmployee.id,
         slab_id: Number(syncSlabId),
         wage_amount: syncWageAmount
@@ -1033,7 +1033,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     setBaseMasterRate(activeWageAmount);
 
     try {
-      const history = await tauri.invoke<any[]>('get_salary_revision_history', { empId: emp.id, moduleType: currentMode });
+      const history = await invokeCommand<any[]>('get_salary_revision_history', { empId: emp.id, moduleType: currentMode });
       setRevisionHistory(history);
       
       const today = new Date().toISOString().split('T')[0];
@@ -1054,7 +1054,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (currentMode === 'P') {
       const fetchLedger = async () => {
         try {
-          const data = await tauri.invoke<any[]>('get_gratuity_ledger', {
+          const data = await invokeCommand<any[]>('get_gratuity_ledger', {
             empId: emp.id,
             moduleType: 'P'
           });
@@ -1177,7 +1177,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
   const confirmDelete = async () => {
     if (!employeeToDelete) return;
     try {
-      await tauri.invoke('master_crud', {
+      await invokeCommand('master_crud', {
         tableName: 'employees',
         operation: 'delete',
         id: employeeToDelete,
@@ -1196,7 +1196,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
   const confirmBulkDelete = async () => {
     if (employeesToDelete.length === 0) return;
     try {
-      await tauri.invoke('master_crud', {
+      await invokeCommand('master_crud', {
         tableName: 'employees',
         operation: 'bulk_delete',
         data: { ids: employeesToDelete },
@@ -1223,8 +1223,8 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     
     try {
       const [configRes, nextCodeRes] = await Promise.all([
-        tauri.invoke<any>('get_company_config', { moduleType: currentMode }),
-        tauri.invoke<{ nextCode: string }>('get_next_employee_code', { moduleType: currentMode })
+        invokeCommand<any>('get_company_config', { moduleType: currentMode }),
+        invokeCommand<{ nextCode: string }>('get_next_employee_code', { moduleType: currentMode })
       ]);
 
       const isManual = Boolean(configRes?.emp_id_manual_entry);

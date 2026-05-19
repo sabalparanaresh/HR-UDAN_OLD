@@ -9,7 +9,7 @@ import {
   AlertCircle,
   X
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -18,6 +18,8 @@ import { Pagination } from '../../components/common/Pagination';
 import { MultiSelect } from '../../components/common/MultiSelect';
 import { EmployeeSearchSelect } from '../../components/form/EmployeeSearchSelect';
 import { useAdvanceSimulation } from '../../hooks/useAdvanceSimulation';
+import { useAdvanceFiltersStore } from '../../store/advanceFiltersStore';
+import { useRenderProfile } from '../../hooks/useAttendancePerformance';
 
 interface AdvanceDraft {
   emp_id: number;
@@ -38,17 +40,18 @@ interface AdvanceDraft {
 }
 
 export default function AdvanceProcessing({ currentUser }: { currentUser: any }) {
+  useRenderProfile('AdvanceProcessing');
   const { currentMode } = useModule();
-  const [wageMonth, setWageMonth] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  
+  const filters = useAdvanceFiltersStore(state => state.filters);
+  const setFilters = useAdvanceFiltersStore(state => state.setFilters);
+
   const [percentage, setPercentage] = useState(50);
   const [threshold, setThreshold] = useState(1000);
   const [rounding, setRounding] = useState(100);
   const [authorizerId, setAuthorizerId] = useState<number | ''>('');
   
   const [drafts, setDrafts] = useState<AdvanceDraft[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
@@ -61,27 +64,19 @@ export default function AdvanceProcessing({ currentUser }: { currentUser: any })
     categories: [] as any[],
     designations: [] as any[],
   });
-  
-  const [locationFilters, setLocationFilters] = useState<number[]>([]);
-  const [divisionFilters, setDivisionFilters] = useState<number[]>([]);
-  const [departmentFilters, setDepartmentFilters] = useState<number[]>([]);
-  const [groupFilters, setGroupFilters] = useState<number[]>([]);
-  const [classFilters, setClassFilters] = useState<number[]>([]);
-  const [categoryFilters, setCategoryFilters] = useState<number[]>([]);
-  const [designationFilters, setDesignationFilters] = useState<number[]>([]);
 
   const { simulationQuery, postAdvancesMutation } = useAdvanceSimulation(
-    wageMonth,
-    fromDate,
-    toDate,
+    filters.wageMonth,
+    filters.fromDate,
+    filters.toDate,
     {
-      locationIds: locationFilters,
-      divisionIds: divisionFilters,
-      departmentIds: departmentFilters,
-      groupIds: groupFilters,
-      classIds: classFilters,
-      categoryIds: categoryFilters,
-      designationIds: designationFilters
+      locationIds: filters.locationFilters,
+      divisionIds: filters.divisionFilters,
+      departmentIds: filters.departmentFilters,
+      groupIds: filters.groupFilters,
+      classIds: filters.classFilters,
+      categoryIds: filters.categoryFilters,
+      designationIds: filters.designationFilters
     }
   );
 
@@ -90,15 +85,18 @@ export default function AdvanceProcessing({ currentUser }: { currentUser: any })
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const year = now.getFullYear();
-    setWageMonth(`${year}-${month}`);
+    const newWageMonth = `${year}-${month}`;
     
     const firstDay = `${year}-${month}-01`;
     const lastDayOfMonth = new Date(year, now.getMonth() + 1, 0).getDate();
     const midPoint = Math.min(15, lastDayOfMonth);
     const midDay = `${year}-${month}-${String(midPoint).padStart(2, '0')}`;
     
-    setFromDate(firstDay);
-    setToDate(midDay);
+    setFilters({
+      wageMonth: newWageMonth,
+      fromDate: firstDay,
+      toDate: midDay
+    });
   }, []);
 
   const fetchMasters = async () => {
@@ -119,7 +117,7 @@ export default function AdvanceProcessing({ currentUser }: { currentUser: any })
   };
 
   const handleRunAnalysis = async () => {
-    if (!wageMonth) {
+    if (!filters.wageMonth) {
       toast.error("Please provide wage month");
       return;
     }
@@ -194,10 +192,10 @@ export default function AdvanceProcessing({ currentUser }: { currentUser: any })
   };
 
   const filteredDrafts = useMemo(() => drafts.filter(d => 
-    (d.name || "").toLowerCase().includes((searchTerm || "").toLowerCase()) ||
-    (d.emp_code || "").toLowerCase().includes((searchTerm || "").toLowerCase()) ||
-    ((d.group_dept || "").toLowerCase().includes((searchTerm || "").toLowerCase()))
-  ), [drafts, searchTerm]);
+    (d.name || "").toLowerCase().includes((filters.searchTerm || "").toLowerCase()) ||
+    (d.emp_code || "").toLowerCase().includes((filters.searchTerm || "").toLowerCase()) ||
+    ((d.group_dept || "").toLowerCase().includes((filters.searchTerm || "").toLowerCase()))
+  ), [drafts, filters.searchTerm]);
 
   const totalPages = Math.ceil(filteredDrafts.length / pageSize);
   const paginatedDrafts = filteredDrafts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -223,18 +221,18 @@ export default function AdvanceProcessing({ currentUser }: { currentUser: any })
             <label className="text-[10px] font-bold text-slate-500 uppercase">Wage Month</label>
             <input 
               type="month" 
-              value={wageMonth}
-              onChange={e => setWageMonth(e.target.value)}
+              value={filters.wageMonth}
+              onChange={e => setFilters({ wageMonth: e.target.value })}
               className="w-full bg-slate-50 border border-app-border p-2.5 text-sm font-medium focus:border-primary-navy outline-none rounded-lg"
             />
           </div>
           <div className="space-y-1">
              <label className="text-[10px] font-bold text-slate-500 uppercase">From Date</label>
-             <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-full bg-slate-50 border border-app-border p-2.5 text-sm font-medium focus:border-primary-navy outline-none rounded-lg" />
+             <input type="date" value={filters.fromDate} onChange={e => setFilters({ fromDate: e.target.value })} className="w-full bg-slate-50 border border-app-border p-2.5 text-sm font-medium focus:border-primary-navy outline-none rounded-lg" />
           </div>
           <div className="space-y-1">
              <label className="text-[10px] font-bold text-slate-500 uppercase">To Date</label>
-             <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-full bg-slate-50 border border-app-border p-2.5 text-sm font-medium focus:border-primary-navy outline-none rounded-lg" />
+             <input type="date" value={filters.toDate} onChange={e => setFilters({ toDate: e.target.value })} className="w-full bg-slate-50 border border-app-border p-2.5 text-sm font-medium focus:border-primary-navy outline-none rounded-lg" />
           </div>
         </div>
 
@@ -282,13 +280,13 @@ export default function AdvanceProcessing({ currentUser }: { currentUser: any })
              </div>
            </div>
            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 w-full">
-             <MultiSelect label="Location" options={masters.locations} selected={locationFilters} onChange={setLocationFilters} />
-             <MultiSelect label="Division" options={masters.divisions} selected={divisionFilters} onChange={setDivisionFilters} />
-             <MultiSelect label="Class" options={masters.classes} selected={classFilters} onChange={setClassFilters} />
-             <MultiSelect label="Category" options={masters.categories} selected={categoryFilters} onChange={setCategoryFilters} />
-             <MultiSelect label="Group" options={masters.groups} selected={groupFilters} onChange={setGroupFilters} />
-             <MultiSelect label="Department" options={masters.departments} selected={departmentFilters} onChange={setDepartmentFilters} />
-             <MultiSelect label="Designation" options={masters.designations} selected={designationFilters} onChange={setDesignationFilters} />
+             <MultiSelect label="Location" options={masters.locations} selected={filters.locationFilters} onChange={(v) => setFilters({ locationFilters: v })} />
+             <MultiSelect label="Division" options={masters.divisions} selected={filters.divisionFilters} onChange={(v) => setFilters({ divisionFilters: v })} />
+             <MultiSelect label="Class" options={masters.classes} selected={filters.classFilters} onChange={(v) => setFilters({ classFilters: v })} />
+             <MultiSelect label="Category" options={masters.categories} selected={filters.categoryFilters} onChange={(v) => setFilters({ categoryFilters: v })} />
+             <MultiSelect label="Group" options={masters.groups} selected={filters.groupFilters} onChange={(v) => setFilters({ groupFilters: v })} />
+             <MultiSelect label="Department" options={masters.departments} selected={filters.departmentFilters} onChange={(v) => setFilters({ departmentFilters: v })} />
+             <MultiSelect label="Designation" options={masters.designations} selected={filters.designationFilters} onChange={(v) => setFilters({ designationFilters: v })} />
            </div>
         </div>
 
@@ -312,8 +310,8 @@ export default function AdvanceProcessing({ currentUser }: { currentUser: any })
                 <input 
                   type="text" 
                   placeholder="Filter by name, code or department..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
+                  value={filters.searchTerm}
+                  onChange={e => setFilters({ searchTerm: e.target.value })}
                   className="w-full pl-10 pr-4 py-2 bg-white border border-app-border rounded-md text-sm focus:ring-2 focus:ring-primary-navy/20 outline-none transition-all"
                 />
               </div>

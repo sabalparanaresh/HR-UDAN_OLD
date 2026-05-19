@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Users, ShieldAlert, MonitorPlay, BarChart2, Edit3, Save, X, Activity, Clock, AlertTriangle, LayoutDashboard, Database, TrendingUp, DollarSign } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invoke } from '@tauri-apps/api/tauri';
-import ReactGridLayout, { Responsive as ResponsiveGridLayout, useContainerWidth, Layout } from 'react-grid-layout';
+import { invokeCommand as invoke } from '../../services/apiClient';
+import ReactGridLayout, { Responsive as ResponsiveGridLayout, Layout } from 'react-grid-layout';
+import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useDashboardStore, DashboardWidgetConfig } from '../../store/useDashboardStore';
-import { transformChartData } from '../../utils/format/chartEngine';
+import { transformChartData } from '../../utils';
 import CachedStatutoryWarningBanner from '../../components/layout/CachedStatutoryWarningBanner';
+import DashboardWidget from '../../components/dashboard/DashboardWidget';
 
 const formatCurrency = (val: number | undefined) => {
     if (val === undefined || val === null) return '₹ 0';
@@ -52,6 +54,7 @@ function PayrollAnalytics({ currentUser }: { currentUser: any }) {
   
   const [layouts, setLayouts] = useState<any>(DEFAULT_LAYOUTS);
   const [widgets, setWidgets] = useState<DashboardWidgetConfig[]>(DEFAULT_WIDGETS);
+  const activeRequest = useRef<boolean>(false);
 
   const { width, containerRef, mounted } = useContainerWidth();
   const ResponsiveGridLayoutAny = ResponsiveGridLayout as any;
@@ -59,22 +62,28 @@ function PayrollAnalytics({ currentUser }: { currentUser: any }) {
   // RBAC Access Check
   const hasAccess = true; // Handled by App.tsx ProtectedRoute
 
-  const fetchDashboard = async (force: boolean = false) => {
+  const fetchDashboard = async (force: boolean = false, isCancelled = { value: false }) => {
     setLoading(true);
+    activeRequest.current = true;
     try {
       const resp = await invoke('get_payroll_analytics', { moduleType: currentMode, force_refresh: force });
-      setData(resp);
+      if (!isCancelled.value) setData(resp);
     } catch (err) {
-      console.error(err);
+      if (!isCancelled.value) console.error(err);
     } finally {
-      setLoading(false);
+      if (!isCancelled.value) setLoading(false);
+      activeRequest.current = false;
     }
   };
 
   useEffect(() => {
+    const isCancelled = { value: false };
     if (hasAccess) {
-      fetchDashboard();
+      fetchDashboard(false, isCancelled);
     }
+    return () => {
+        isCancelled.value = true;
+    };
   }, [currentMode, hasAccess]);
 
   const onLayoutChange = (layout: any, allLayouts: any) => {
@@ -107,81 +116,9 @@ function PayrollAnalytics({ currentUser }: { currentUser: any }) {
   const wageTypeData = data?.wageTypeData || [];
   const headData = data?.headData || [];
 
-  const renderWidget = (widget: DashboardWidgetConfig) => {
-    if (widget.type === 'KPI') {
-       const sourceObj = widget.dataSource === 'forecast' ? forecast : kpis;
-       const rawV = widget.kpiField ? sourceObj[widget.kpiField] : 0;
-       
-       const finalV = typeof rawV === 'number' && widget.kpiField !== 'total_employees_paid' 
-           ? formatCurrency(rawV) 
-           : rawV;
+  const widgetData = useMemo(() => ({ ...data, kpis, kpi: kpis, forecast, heads: headData }), [data, kpis, forecast, headData]);
 
-       return (
-          <div className={`textile-card p-4 bg-white border-app-border flex items-center justify-center flex-col gap-2 h-full w-full ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''}`}>
-             <p className="text-[10px] text-text-muted uppercase font-mono tracking-widest text-center">{widget.title}</p>
-             <p className="text-2xl font-black text-slate-800">
-               {finalV}
-             </p>
-          </div>
-       );
-    }
-
-    let option: any = {};
-    if (widget.type === 'PIE') {
-       if (widget.dataSource === 'heads' || widget.id === 'chart_heads_pie') {
-           option = transformChartData(headData, {
-             type: 'pie',
-             categoryField: 'head_name',
-             valueFields: ['total_amount']
-           });
-       } else {
-           option = transformChartData(wageTypeData, {
-             type: 'pie',
-             categoryField: 'wage_type',
-             valueFields: ['total_gross']
-           });
-       }
-       if (option.series && option.series[0]) {
-           option.series[0].radius = ['40%', '70%'];
-           // Set vibrant colors
-           option.color = ['#ef4444', '#f97316', '#3b82f6', '#8b5cf6', '#10b981', '#14b8a6', '#6366f1'];
-       }
-    } else if (widget.type === 'LINE') {
-       option = transformChartData(trendData, {
-         type: 'line',
-         categoryField: 'month',
-         valueFields: ['gross_salary', 'net_salary']
-       });
-       if (option.series && option.series[0]) {
-         option.series[0].itemStyle = { color: '#3b82f6' }; 
-         option.series[0].areaStyle = { opacity: 0.1 };
-         if (option.series[1]) {
-             option.series[1].itemStyle = { color: '#10b981' };
-             option.series[1].areaStyle = { opacity: 0.1 };
-         }
-       }
-    } else if (widget.type === 'BAR') {
-       option = transformChartData(costCenterData, {
-         type: 'bar',
-         categoryField: 'department_name',
-         valueFields: ['total_gross']
-       });
-       if (option.series && option.series[0]) {
-         option.series[0].itemStyle = { color: '#8b5cf6', borderRadius: [4, 4, 0, 0] };
-       }
-    }
-
-    return (
-      <div className={`textile-card p-4 bg-white border-app-border h-full flex flex-col ${isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''}`}>
-        <h3 className="text-[11px] font-black uppercase tracking-widest text-primary-navy border-b border-app-border pb-2 mb-2">
-          {widget.title}
-        </h3>
-        <div className="flex-1 min-h-0 relative">
-          <ReactECharts option={option} style={{ height: '100%', width: '100%', position: 'absolute' }} />
-        </div>
-      </div>
-    );
-  };
+  // Handled by generic widget renderer in JSX
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -232,7 +169,7 @@ function PayrollAnalytics({ currentUser }: { currentUser: any }) {
            >
              {widgets.map(w => (
                <div key={w.id} className="relative group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white">
-                 {renderWidget(w)}
+                 <DashboardWidget widget={w} data={widgetData} isEditMode={isEditMode} />
                </div>
              ))}
            </ResponsiveGridLayoutAny>

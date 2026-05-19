@@ -1,6 +1,6 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { useAuthStore } from '../../store/authStore';
 import { RBACGuard } from '../../components/rbac';
 import { Plus, Save, Trash2, Edit2, Download, Upload, Loader2, X } from 'lucide-react';
@@ -96,7 +96,7 @@ export default function PieceRateConfig() {
         setIsUploading(true);
         try {
             const buffer = await file.arrayBuffer();
-            const workbook = XLSX.read(buffer, { type: 'array' });
+            const workbook = await XLSX.read(buffer, { type: 'array' });
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
             const data = XLSX.utils.sheet_to_json(sheet) as any[];
             

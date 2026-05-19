@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { 
   Plus, Search, CheckCircle2, XCircle, Calculator, Info, User, 
   Calendar, DollarSign, FileText, Clock, ShieldCheck, AlertCircle, Edit, Play
 } from 'lucide-react';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import pdfMake from 'pdfmake/build/pdfmake';
+import pdfFonts from 'pdfmake/build/vfs_fonts';
+import { TDocumentDefinitions } from 'pdfmake/interfaces';
 
 import { useModule } from '../../contexts/ModuleContext';
 import { Employee } from '../../types';
@@ -230,69 +231,71 @@ export default function LoanApplication() {
 
       await invoke('create_loan_application', payload);
 
-      const doc = new jsPDF();
       const emp = employees.find(e => e.id === payload.emp_id);
       const guar = employees.find(e => e.id === Number(formData.guarantor_id));
       const loanType = loanTypes.find(lt => lt.id === payload.loan_type_id);
 
-      doc.setFontSize(20);
-      doc.text("Loan Application Details", 14, 20);
-      
-      doc.setFontSize(12);
-      doc.text(`Application Date: ${payload.application_date}`, 14, 30);
-      
-      autoTable(doc, {
-         startY: 35,
-         head: [['Field', 'Details']],
-         body: [
-            ['Applicant', emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() + ` (${emp.emp_code})` : 'N/A'],
-            ['Guarantor', guar ? `${guar.first_name || ''} ${guar.last_name || ''}`.trim() + ` (${guar.emp_code})` : 'None'],
-            ['Loan Type', loanType?.name || 'N/A'],
-            ['Requested Amount', `Rs. ${payload.loan_amount}`],
-            ['No. of EMIs', payload.no_of_emi.toString()],
-            ['Start Month-Year', formData.start_month_year],
-            ['Payment Mode', formData.payment_mode],
-            ['Reason', formData.reason],
-            ['Remarks', formData.remarks || '-']
-         ]
-      });
+      (pdfMake as any).vfs = (pdfFonts as any).pdfMake ? (pdfFonts as any).pdfMake.vfs : (pdfFonts as any).vfs;
 
-      let finalY = (doc as any).lastAutoTable.finalY + 10;
-      doc.setFontSize(16);
-      doc.text("Eligibility Criteria", 14, finalY);
-      finalY += 5;
+      const docDefinition: TDocumentDefinitions = {
+        content: [
+          { text: "Loan Application Details", fontSize: 20, margin: [0, 0, 0, 10] },
+          { text: `Application Date: ${payload.application_date}`, fontSize: 12, margin: [0, 0, 0, 10] },
+          {
+            table: {
+              headerRows: 1,
+              body: [
+                [{text: 'Field', style: 'tableHeader'}, {text: 'Details', style: 'tableHeader'}],
+                ['Applicant', emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() + ` (${emp.emp_code})` : 'N/A'],
+                ['Guarantor', guar ? `${guar.first_name || ''} ${guar.last_name || ''}`.trim() + ` (${guar.emp_code})` : 'None'],
+                ['Loan Type', loanType?.name || 'N/A'],
+                ['Requested Amount', `Rs. ${payload.loan_amount}`],
+                ['No. of EMIs', payload.no_of_emi.toString()],
+                ['Start Month-Year', formData.start_month_year],
+                ['Payment Mode', formData.payment_mode],
+                ['Reason', formData.reason],
+                ['Remarks', formData.remarks || '-']
+              ]
+            },
+            margin: [0, 0, 0, 20]
+          },
+          { text: "Eligibility Criteria", fontSize: 16, margin: [0, 0, 0, 5] },
+          {
+            table: {
+              headerRows: 1,
+              body: [
+                [{text: 'Parameter', style: 'tableHeader'}, {text: 'Limits', style: 'tableHeader'}],
+                ['Category/Class/Tenure Status', eligibility?.eligible ? 'Passed' : eligibility?.reason || 'Failed'],
+                ['Max Approved Amount', `Rs. ${eligibility?.max_amount || 0}`],
+                ['Max Approved Tenure', `${eligibility?.max_tenure || 0} Months`]
+              ]
+            },
+            margin: [0, 0, 0, 20]
+          }
+        ],
+        styles: {
+          tableHeader: { bold: true }
+        }
+      };
 
-      const eligBody = [
-         ['Category/Class/Tenure Status', eligibility?.eligible ? 'Passed' : eligibility?.reason || 'Failed'],
-         ['Max Approved Amount', `Rs. ${eligibility?.max_amount || 0}`],
-         ['Max Approved Tenure', `${eligibility?.max_tenure || 0} Months`]
-      ];
-
-      autoTable(doc, {
-         startY: finalY,
-         head: [['Parameter', 'Limits']],
-         body: eligBody
-      });
-
-      finalY = (doc as any).lastAutoTable.finalY + 10;
-      
       if (activeLoanWarning?.has) {
-         doc.setFontSize(16);
-         doc.text("Prior Active Loans", 14, finalY);
-         finalY += 5;
-         
-         const activeLoansBody = activeLoanWarning.details.map((l: any) => [
-            l.applicant_name, l.loan_type_name, l.application_date, `Rs. ${l.pending_amount || 0}`, `Rs. ${l.emi_amount || 0}`, l.closing_month || '-'
-         ]);
-         
-         autoTable(doc, {
-            startY: finalY,
-            head: [['Applicant', 'Loan Type', 'App Date', 'Pending Amt', 'EMI Amt', 'Closing Month']],
-            body: activeLoansBody
-         });
+        (docDefinition.content as any[]).push(
+          { text: "Prior Active Loans", fontSize: 16, margin: [0, 0, 0, 5] },
+          {
+            table: {
+              headerRows: 1,
+              body: [
+                [{text: 'Applicant', style: 'tableHeader'}, {text: 'Loan Type', style: 'tableHeader'}, {text: 'App Date', style: 'tableHeader'}, {text: 'Pending Amt', style: 'tableHeader'}, {text: 'EMI Amt', style: 'tableHeader'}, {text: 'Closing Month', style: 'tableHeader'}],
+                ...activeLoanWarning.details.map((l: any) => [
+                  l.applicant_name, l.loan_type_name, l.application_date, `Rs. ${l.pending_amount || 0}`, `Rs. ${l.emi_amount || 0}`, l.closing_month || '-'
+                ])
+              ]
+            }
+          }
+        );
       }
 
-      doc.save(`Loan_Application_${emp?.emp_code || 'Unknown'}_${payload.application_date}.pdf`);
+      pdfMake.createPdf(docDefinition).download(`Loan_Application_${emp?.emp_code || 'Unknown'}_${payload.application_date}.pdf`);
 
       toast.success('Loan Application Submitted & PDF Generated');
       setFormData({ application_date: new Date().toISOString().split('T')[0], emp_id: '', guarantor_id: '', loan_type_id: '', loan_amount: '', no_of_emi: '', start_month_year: '', payment_mode: 'Bank Transfer', reason: '', remarks: '' });

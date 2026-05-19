@@ -15,18 +15,16 @@ import {
   AlertCircle,
   FileSpreadsheet,
   Building2,
-  RefreshCw
+  RefreshCw,
+  List
 } from 'lucide-react';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
-import { useDropzone } from 'react-dropzone';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { invoke } from '@tauri-apps/api/tauri';
-import { listen } from '@tauri-apps/api/event';
+import { invokeCommand as invoke } from '../../services/apiClient';
 
 import { useModule } from '../../contexts/ModuleContext';
+import BulkBankUpload from '../../components/BulkBankUpload';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -43,7 +41,7 @@ interface BankRecord {
 
 export default function BankMaster() {
   const { currentMode } = useModule();
-  const [mode, setMode] = useState<'ONLINE' | 'OFFLINE'>('OFFLINE');
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [banks, setBanks] = useState<BankRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -53,32 +51,6 @@ export default function BankMaster() {
   const [isLoading, setIsLoading] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   
-  const handleRepairSync = async () => {
-    setIsLoading(true);
-    try {
-      const resp = await invoke('master_crud', {
-        tableName: 'banks',
-        operation: 'sync_all_to_statutory',
-        moduleType: 'K'
-      }) as any;
-      toast.success(`Successfully mirrored ${resp.synced} records to Statutory Module`);
-    } catch (err: any) {
-      toast.error(err.error || "Failed to repair mirror sync");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Chunked Upload & Validation State
-  const [parsedData, setParsedData] = useState<any[]>([]);
-  const [validationResults, setValidationResults] = useState<{
-    valid: any[];
-    invalid: any[];
-    grouped: Record<string, any[]>;
-  }>({ valid: [], invalid: [], grouped: {} });
-  const [isParsing, setIsParsing] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-
   const getUrl = (path: string) => currentMode === 'P' ? `/api/statutory${path}` : `/api${path}`;
   
   const [totalRecords, setTotalRecords] = useState(0);
@@ -157,10 +129,15 @@ export default function BankMaster() {
             }));
             
             // Bulk upsert to Local DB
-            await invoke('bulk_bank_import', {
-              records: records,
-              module_type: currentMode
-            });
+            // Chunked on frontend to avoid NGINX 413 Payload Too Large limits
+            const CHUNK_SIZE = 5000;
+            for (let j = 0; j < records.length; j += CHUNK_SIZE) {
+              const chunk = records.slice(j, j + CHUNK_SIZE);
+              await invoke('bulk_bank_import', {
+                records: chunk,
+                module_type: currentMode
+              });
+            }
             totalImported += records.length;
           }
         } catch (e) {
@@ -206,7 +183,7 @@ export default function BankMaster() {
       const data = {
         ...formData,
         ifsc: formData.ifsc.toUpperCase(),
-        sync_status: isEditing ? banks.find(b => b.ifsc === isEditing)?.sync_status : (mode === 'ONLINE' ? 'API' : 'MANUAL'),
+        sync_status: isEditing ? banks.find(b => b.ifsc === isEditing)?.sync_status : 'MANUAL',
         updated_at: new Date().toISOString()
       };
 
@@ -264,157 +241,6 @@ export default function BankMaster() {
     }
   };
 
-  const handleFileUpload = (file: File) => {
-    if (!file) return;
-
-    setIsParsing(true);
-    setImportProgress({ current: 0, total: 100 });
-    
-    const isCsv = file.name.toLowerCase().endsWith('.csv');
-
-    if (isCsv) {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        worker: true,
-        complete: (results) => {
-          processImportedData(results.data);
-          setIsParsing(false);
-          setImportProgress(null);
-        },
-        error: (err) => {
-          toast.error("Failed to parse CSV file");
-          setIsParsing(false);
-          setImportProgress(null);
-        }
-      });
-    } else {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
-          const firstSheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[firstSheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
-          processImportedData(jsonData);
-        } catch (err) {
-          toast.error("Failed to parse Excel file");
-        } finally {
-          setIsParsing(false);
-          setImportProgress(null);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    }
-  };
-
-  const processImportedData = (data: any[]) => {
-    const valid: any[] = [];
-    const invalid: any[] = [];
-    const grouped: Record<string, any[]> = {};
-
-    data.forEach((row, index) => {
-      // Map variants of headers to strict triad: bank_name, ifsc, branch
-      const bank_name = String(row['Bank Name'] || row['bank_name'] || row['BankName'] || row['Bank'] || 'Unknown Bank').trim();
-      const ifsc = String(row['IFSC'] || row['ifsc'] || row['IFSC Code'] || '').trim().toUpperCase();
-      const branch = String(row['Branch'] || row['branch'] || row['BranchName'] || '').trim();
-      
-      const errors: string[] = [];
-      
-      // IFSC Validation (11 chars)
-      if (!ifsc || ifsc.length !== 11) {
-        errors.push("Invalid IFSC (must be 11 chars)");
-      }
-
-      const record = { bank_name, ifsc, branch, errors, rowIndex: index };
-
-      if (errors.length > 0) {
-        invalid.push(record);
-      } else {
-        valid.push(record);
-      }
-
-      if (!grouped[bank_name]) grouped[bank_name] = [];
-      grouped[bank_name].push(record);
-    });
-
-    setValidationResults({ valid, invalid, grouped });
-    setParsedData(data);
-    setShowPreview(true);
-    toast.info(`Parsed ${data.length} records. Found ${invalid.length} invalid entries.`);
-  };
-
-  const commitToDb = async () => {
-    if (validationResults.valid.length === 0) {
-      toast.error("No valid records to commit");
-      return;
-    }
-
-    let unlisten: (() => void) | undefined;
-    setIsLoading(true);
-    setImportProgress({ current: 0, total: validationResults.valid.length });
-
-    try {
-      // Initialize Tauri Event Listener for progress signaling
-      // In this emulator environment, we use SSE bridge if Tauri is absent
-      if (typeof window !== 'undefined' && !(window as any).__TAURI_METADATA__) {
-        const es = new EventSource('/api/events');
-        es.onmessage = (e) => {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.event === 'import-progress') {
-              setImportProgress(prev => prev ? { ...prev, current: data.payload } : null);
-            }
-          } catch {}
-        };
-        unlisten = () => es.close();
-      } else {
-        unlisten = await listen('import-progress', (event) => {
-          setImportProgress(prev => prev ? { ...prev, current: event.payload as number } : null);
-        }) as any;
-      }
-
-      const recordsToImport = validationResults.valid.map(v => ({
-        bank_name: v.bank_name,
-        ifsc: v.ifsc,
-        branch: v.branch,
-        sync_status: 'IMPORT'
-      }));
-
-      // High-speed atomic transaction via dedicated Tauri command
-      await invoke('bulk_bank_import', {
-        records: recordsToImport,
-        module_type: currentMode
-      });
-
-      toast.success(`Successfully committed ${recordsToImport.length} records.`);
-      setShowPreview(false);
-      setParsedData([]);
-      fetchBanks();
-    } catch (err: any) {
-      console.error("Commit error:", err);
-      toast.error(err.error || "Failed to commit records to database");
-    } finally {
-      setIsLoading(false);
-      setImportProgress(null);
-      if (typeof unlisten === 'function') unlisten();
-    }
-  };
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: (acceptedFiles: File[]) => {
-      if (acceptedFiles.length > 0) {
-        handleFileUpload(acceptedFiles[0]);
-      }
-    },
-    accept: {
-      'text/csv': ['.csv'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/vnd.ms-excel': ['.xls']
-    },
-    multiple: false
-  } as any);
 
   const filteredBanks = useMemo(() => {
     // Note: Backend handles primary search, this is for secondary filtering if dataset is small
@@ -452,17 +278,15 @@ export default function BankMaster() {
         </div>
 
         <div className="flex items-center gap-3">
-          {currentMode === 'K' && (
-            <button
-              onClick={handleRepairSync}
-              disabled={isLoading}
-              className="flex items-center gap-2 px-6 py-2.5 text-xs font-bold transition-all rounded-lg border-2 border-primary-navy bg-white text-primary-navy hover:bg-slate-50"
-              title="Push all primary data to statutory database"
-            >
-              {isLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              MIRROR TO STATUTORY
-            </button>
-          )}
+          <button
+            onClick={() => setShowBulkUpload(!showBulkUpload)}
+            className="flex items-center gap-2 px-6 py-2.5 text-xs font-bold transition-all rounded-lg border-2 border-primary-navy bg-white text-primary-navy hover:bg-slate-50"
+          >
+            {showBulkUpload ? <List size={14} /> : <Upload size={14} />}
+            {showBulkUpload ? 'VIEW MASTER' : 'BULK UPLOAD'}
+          </button>
+          
+
           <button
             onClick={handleSyncRBI}
             disabled={isSyncing}
@@ -530,7 +354,11 @@ export default function BankMaster() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main Content Area */}
+      {showBulkUpload ? (
+        <BulkBankUpload onSuccess={() => fetchBanks()} />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Entry Form */}
         <div className="lg:col-span-1 space-y-6">
           <div className="textile-card p-6 bg-white border-app-border shadow-xl">
@@ -600,47 +428,6 @@ export default function BankMaster() {
               </button>
             </form>
           </div>
-
-          {/* Offline Upload Area */}
-          {mode === 'OFFLINE' && (
-            <div className="space-y-4">
-              <div 
-                {...getRootProps()} 
-                className={cn(
-                  "textile-card p-8 border-2 border-dashed rounded-xl transition-all cursor-pointer flex flex-col items-center justify-center gap-4 text-center",
-                  isDragActive ? "border-primary-navy bg-primary-navy/5" : "border-primary-navy/20 bg-slate-50 hover:bg-slate-100"
-                )}
-              >
-                <input {...getInputProps()} />
-                <div className="w-16 h-16 bg-primary-navy/10 text-primary-navy rounded-full flex items-center justify-center">
-                  <Upload size={32} />
-                </div>
-                <div>
-                  <h4 className="textile-header font-bold uppercase text-sm text-primary-navy">RBI CSV/Excel Import</h4>
-                  <p className="text-[11px] text-text-muted mt-1">
-                    {isDragActive ? "Drop the file here..." : "Drag & drop file here, or click to select"}
-                  </p>
-                </div>
-              </div>
-
-              {isParsing && (
-                <div className="space-y-2 animate-in fade-in duration-300">
-                  <div className="flex justify-between text-[10px] font-mono uppercase text-primary-navy">
-                    <span>Parsing Data...</span>
-                    <span>Processing</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary-navy animate-pulse w-full" />
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 text-[9px] font-mono text-primary-navy uppercase bg-white/50 p-2 rounded border border-primary-navy/10">
-                <FileSpreadsheet size={12} />
-                Supports .csv, .xlsx and .xls formats
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Bank List Table */}
@@ -776,98 +563,6 @@ export default function BankMaster() {
             </div>
           </div>
         </div>
-      </div>
-      {/* Validation Preview Modal */}
-      {showPreview && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden border border-app-border">
-            <div className="p-6 border-b border-app-border bg-slate-50 flex justify-between items-center">
-              <div>
-                <h3 className="text-xl textile-header font-black text-primary-navy flex items-center gap-3">
-                  <CheckCircle2 className="text-primary-green" />
-                  Validation Preview
-                </h3>
-                <p className="text-xs text-text-muted font-mono uppercase mt-1">
-                  {validationResults.valid.length} Valid / {validationResults.invalid.length} Invalid / {Object.keys(validationResults.grouped).length} Banks
-                </p>
-              </div>
-              <button 
-                onClick={() => setShowPreview(false)}
-                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto p-6">
-              <div className="space-y-8">
-                {Object.entries(validationResults.grouped).map(([bank_name, records]) => (
-                  <div key={bank_name} className="space-y-3">
-                    <div className="flex items-center gap-2 border-b border-app-border pb-2">
-                      <Building2 size={18} className="text-primary-navy" />
-                      <h4 className="text-sm font-black text-primary-navy uppercase tracking-tight">{bank_name}</h4>
-                      <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono">{(records as any[]).length} ROWS</span>
-                    </div>
-                    <div className="overflow-x-auto rounded-lg border border-app-border">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 border-b border-app-border">
-                          <tr>
-                            <th className="p-3 font-bold uppercase text-[10px]">IFSC</th>
-                            <th className="p-3 font-bold uppercase text-[10px]">Bank Name</th>
-                            <th className="p-3 font-bold uppercase text-[10px]">Branch</th>
-                            <th className="p-3 font-bold uppercase text-[10px]">Status / Errors</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-app-border">
-                          {(records as any[]).map((rec, i) => (
-                            <tr key={i} className={cn(rec.errors.length > 0 ? "bg-red-50/30" : "hover:bg-slate-50")}>
-                              <td className={cn("p-3 font-mono font-bold", rec.ifsc.length !== 11 && "text-red-600")}>
-                                {rec.ifsc || 'MISSING'}
-                              </td>
-                              <td className="p-3 uppercase font-bold text-primary-navy">{rec.bank_name}</td>
-                              <td className="p-3 text-text-muted">{rec.branch || '-'}</td>
-                              <td className="p-3">
-                                {rec.errors.length > 0 ? (
-                                  <div className="flex flex-col gap-1">
-                                    {(rec.errors as string[]).map((err: string, ei: number) => (
-                                      <span key={ei} className="text-[9px] font-bold text-red-600 uppercase flex items-center gap-1">
-                                        <AlertCircle size={10} /> {err}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-[9px] font-bold text-green-600 uppercase flex items-center gap-1">
-                                    <CheckCircle2 size={10} /> Ready
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-app-border bg-slate-50 flex justify-end gap-4">
-              <button 
-                onClick={() => setShowPreview(false)}
-                className="px-6 py-2.5 border border-app-border rounded-lg text-sm font-bold hover:bg-white transition-all"
-              >
-                Discard
-              </button>
-              <button 
-                onClick={commitToDb}
-                disabled={isLoading || validationResults.valid.length === 0}
-                className="px-8 py-2.5 bg-primary-navy text-white rounded-lg text-sm font-bold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Database size={18} />}
-                Commit {validationResults.valid.length} Records to DB
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

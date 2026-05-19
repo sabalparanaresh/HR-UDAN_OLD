@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import * as Tabs from '@radix-ui/react-tabs';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { 
   Plus, 
   Search, 
@@ -120,7 +120,7 @@ const MasterTab = ({
     const reader = new FileReader();
     reader.onload = async (evt) => {
       const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wb = await XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       try {

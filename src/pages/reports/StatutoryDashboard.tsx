@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import ReactECharts from 'echarts-for-react';
+import React, { useState, useEffect, useMemo } from 'react';
+const ReactECharts = React.lazy(() => import('echarts-for-react'));
 import { ShieldCheck, ShieldAlert, FileText, Users, TrendingUp, RefreshCw } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
-import { invoke } from '@tauri-apps/api/tauri';
-import { transformChartData } from '../../utils/format/chartEngine';
+import { invokeCommand as invoke } from '../../services/apiClient';
+import { transformChartData } from '../../utils';
 
 export default function StatutoryDashboard() {
   const { currentMode } = useModule();
@@ -40,27 +40,29 @@ export default function StatutoryDashboard() {
   const stats = dashboardData?.stats || { total_employees: 0, total_pf: 0, total_esi: 0, total_gross: 0, compliance_variance: 0 };
   const recentFilings = dashboardData?.recentFilings || [];
 
-  const chartData = [
-    { name: 'PF', value: stats.total_pf || 0, color: '#1E3A8A' },
-    { name: 'ESI', value: stats.total_esi || 0, color: '#DC2626' },
-  ];
+  const option = useMemo(() => {
+    const chartData = [
+      { name: 'PF', value: stats.total_pf || 0, color: '#1E3A8A' },
+      { name: 'ESI', value: stats.total_esi || 0, color: '#DC2626' },
+    ];
 
-  const option = transformChartData(chartData, {
-    type: 'bar',
-    categoryField: 'name',
-    valueFields: ['value']
-  });
+    const opt = transformChartData(chartData, {
+      type: 'bar',
+      categoryField: 'name',
+      valueFields: ['value']
+    });
 
-  // Inject custom colors mapped from data
-  if (option.series && option.series[0]) {
-    option.series[0].itemStyle = {
-      color: function (params: any) {
-        const colorList = ['#1E3A8A', '#DC2626'];
-        return colorList[params.dataIndex];
-      },
-      borderRadius: [4, 4, 0, 0]
-    };
-  }
+    if (opt.series && opt.series[0]) {
+      opt.series[0].itemStyle = {
+        color: function (params: any) {
+          const colorList = ['#1E3A8A', '#DC2626'];
+          return colorList[params.dataIndex];
+        },
+        borderRadius: [4, 4, 0, 0]
+      };
+    }
+    return opt;
+  }, [stats.total_pf, stats.total_esi]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -108,8 +110,10 @@ export default function StatutoryDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 textile-card p-6 bg-white border-app-border">
           <h3 className="textile-header text-lg font-bold mb-6 text-primary-navy border-b border-app-border pb-2">Contribution Analysis</h3>
-          <div className="h-[300px] w-full">
-            <ReactECharts option={option} style={{ height: '100%', width: '100%' }} />
+          <div className="h-[300px] w-full relative">
+            <React.Suspense fallback={<div className="h-full w-full bg-slate-50 animate-pulse rounded-md"></div>}>
+              <ReactECharts option={option} style={{ height: '100%', width: '100%', position: 'absolute' }} notMerge={true} lazyUpdate={true} />
+            </React.Suspense>
           </div>
         </div>
 

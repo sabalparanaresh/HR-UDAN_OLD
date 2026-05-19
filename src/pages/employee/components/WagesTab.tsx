@@ -193,6 +193,96 @@ export default function WagesTab() {
                       </div>
                     </div>
       
+                    {currentMode !== 'P' && (
+                      <div className="textile-card p-6 bg-white border-app-border shadow-xl space-y-4 animate-in slide-in-from-right-4 duration-500">
+                        <div className="flex items-center justify-between border-b border-app-border pb-2">
+                          <h3 className="textile-header font-bold text-primary-navy">
+                            Statutory Wages
+                          </h3>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4">
+                          <div className="space-y-1">
+                            <SearchableSelect
+                              label="Wage Type (*)"
+                              required={true}
+                              options={["Monthly", "Daily"]}
+                              value={watch('statutory_wage_type') || ''}
+                              onChange={(val) => setValue('statutory_wage_type', val)}
+                              placeholder="Select Statutory Wage Type"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <SearchableSelect
+                              label="Salary Slab (*)"
+                              required={true}
+                              options={salarySlabs.map(s => ({ value: s.id.toString(), label: s.slab_name || s.name }))}
+                              value={watch('slab_id') || ''}
+                              onChange={(val) => setValue('slab_id', val)}
+                              placeholder="Select Slab"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1 relative">
+                              <label className="text-[10px] textile-header text-text-muted uppercase transition-colors flex items-center gap-2">
+                                Statutory CTC (*)
+                              </label>
+                              <div className="flex gap-2">
+                                <input 
+                                  type="number" 
+                                  {...register('statutory_wage_amount', { valueAsNumber: true })} 
+                                  className="w-full bg-slate-50 border border-app-border p-2 text-sm focus:outline-none focus:border-primary-navy rounded-md font-mono transition-all"
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] textile-header text-text-muted uppercase">Effective From (*)</label>
+                              <input 
+                                type="date" 
+                                // Mapping to wage_effective_from may clash if we use separate effective dates, 
+                                // but if its same date, they can adjust it. We'll reuse it or keep it simple.
+                                {...register('wage_effective_from')} 
+                                className="w-full bg-slate-50 border border-app-border p-2 text-sm focus:outline-none focus:border-primary-navy rounded-md"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pt-4 border-t border-app-border grid grid-cols-2 gap-4">
+                            <div className="flex flex-col gap-2">
+                              <label className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
+                                {watch('is_pf_covered') ? <ShieldCheck size={12} className="text-indigo-600" /> : <ShieldX size={12} className="text-slate-400" />}
+                                PF Contribution Active
+                              </label>
+                              <div className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/20">
+                                <input 
+                                  type="checkbox"
+                                  {...register('is_pf_covered')}
+                                  className="peer h-6 w-11 cursor-pointer appearance-none rounded-full border border-slate-300 bg-slate-200 checked:bg-indigo-600 transition-all"
+                                />
+                                <span className="pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
+                              </div>
+                            </div>
+                            
+                            <div className="flex flex-col gap-2">
+                              <label className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
+                                {watch('is_esi_covered') ? <ShieldCheck size={12} className="text-purple-600" /> : <ShieldX size={12} className="text-slate-400" />}
+                                ESI Contribution Active
+                              </label>
+                              <div className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600/20">
+                                <input 
+                                  type="checkbox"
+                                  {...register('is_esi_covered')}
+                                  className="peer h-6 w-11 cursor-pointer appearance-none rounded-full border border-slate-300 bg-slate-200 checked:bg-purple-600 transition-all"
+                                />
+                                <span className="pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {currentMode === 'P' && bifurcationData.length > 0 && (
                       <div className="textile-card p-6 bg-white border-app-border shadow-xl space-y-4 animate-in slide-in-from-right-4 duration-500">
                         <div className="flex items-center justify-between border-b border-app-border pb-2">

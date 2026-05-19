@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, CheckCircle, Save, X, ClipboardList } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import PayrollPostingModal from './PayrollPostingModal';
 
 function ProductionEntryList({ onAddNew, onEdit, canWrite }: { onAddNew: () => void, onEdit: (id: string) => void, canWrite: boolean }) {
@@ -468,11 +468,13 @@ function ProductionEntryForm({ invoiceId, onCancel, canWrite }: { invoiceId: str
 }
 
 export default function ProductionEntry() {
-    const { permissionMap } = useAuthStore();
+    const { permissionMap, user } = useAuthStore();
     const [view, setView] = useState<'LIST' | 'FORM' | 'APPROVAL_MODAL'>('LIST');
     const [editId, setEditId] = useState<string | null>(null);
 
-    if (!permissionMap?.Transactions) {
+    const hasAccess = user?.role === 'SUPERADMIN' || !!permissionMap?.Transactions;
+
+    if (!hasAccess) {
         return (
             <div className="p-6">
                 <div className="bg-red-50 text-red-800 p-4 rounded border border-red-200">
@@ -483,7 +485,7 @@ export default function ProductionEntry() {
         );
     }
 
-    const canWrite = !!permissionMap.Transactions;
+    const canWrite = user?.role === 'SUPERADMIN' || !!permissionMap?.Transactions;
 
     return (
         <div className="p-6 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto">

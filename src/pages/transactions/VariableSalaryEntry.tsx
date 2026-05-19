@@ -8,9 +8,9 @@ import {
 import { toast } from 'sonner';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { motion, AnimatePresence } from 'motion/react';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import { useModule } from '../../contexts/ModuleContext';
 import { EmployeeSearchSelect } from '../../components/form/EmployeeSearchSelect';
 import { MultiSelect } from '../../components/common/MultiSelect';
@@ -413,7 +413,7 @@ export default function VariableSalaryEntry({ type, currentUser }: VariableSalar
     const reader = new FileReader();
     reader.onload = async (evt) => {
       const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wb = await XLSX.read(bstr, { type: 'binary' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const data = XLSX.utils.sheet_to_json(ws);
       

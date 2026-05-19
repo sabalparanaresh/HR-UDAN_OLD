@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Save, LayoutDashboard, ShieldCheck, PieChart, Activity, AlertCircle, X } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
-import { invoke } from '@tauri-apps/api/tauri';
-import { Responsive as ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
+import { invokeCommand as invoke } from '../../services/apiClient';
+import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
+import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { DashboardWidgetConfig } from '../../store/useDashboardStore';
-import { transformChartData } from '../../utils/format/chartEngine';
+import { transformChartData } from '../../utils';
 import { DrillDownViewer } from '../../components/dashboard/DrillDownViewer';
 
 const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [

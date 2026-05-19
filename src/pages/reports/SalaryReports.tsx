@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FileText, Download, ShieldAlert, MonitorPlay, Lock } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { toast } from 'sonner';
 import CachedStatutoryWarningBanner from '../../components/layout/CachedStatutoryWarningBanner';
 

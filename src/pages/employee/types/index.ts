@@ -113,6 +113,8 @@ const employeeSchema = z.object({
   wage_type: z.string().optional(),
   wage_amount: z.number().optional().nullable().or(z.literal(0)),
   wage_effective_from: z.string().optional(),
+  statutory_wage_type: z.string().optional(),
+  statutory_wage_amount: z.number().optional().nullable().or(z.literal(0)),
   working_day_type_id: z.string().optional(),
   weekly_off: z.string().optional(),
   weekly_off_effective_date: z.string().optional(),
