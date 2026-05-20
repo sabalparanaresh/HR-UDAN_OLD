@@ -48,8 +48,8 @@ export function useSalaryColumnEngine(options: ColumnEngineOptions) {
         children: [
           { field: 'emp_code', headerName: 'Emp Code', pinned: 'left', minWidth: 120, filter: true },
           { field: 'name', headerName: 'Name', pinned: 'left', minWidth: 200, filter: true },
-          { field: 'department', headerName: 'Department', filter: true, enableRowGroup: true },
-          { field: 'designation', headerName: 'Designation', filter: true, enableRowGroup: true },
+          { field: 'department', headerName: 'Department', filter: true },
+          { field: 'designation', headerName: 'Designation', filter: true },
         ]
       },
       {

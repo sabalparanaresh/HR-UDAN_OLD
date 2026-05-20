@@ -116,7 +116,7 @@ export default function EmployeeTable({
       setGlobalFilter(searchInput);
       if (onSearchChange) onSearchChange(searchInput);
       setIsDebouncing(false);
-    }, 1000);
+    }, 300);
     return () => clearTimeout(timer);
   }, [searchInput, globalFilter, onSearchChange]);
 
