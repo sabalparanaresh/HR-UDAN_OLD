@@ -349,10 +349,6 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
         headerName: col.toUpperCase().replace(/_/g, ' '),
         filter: true,
         sortable: true,
-        enableRowGroup: true,
-        enablePivot: true,
-        enableValue: true,
-        aggFunc: isNumeric ? 'sum' : null,
         cellClassRules: isNumeric ? {
           'text-green-600 font-medium': 'x > 0',
           'text-red-600 font-medium': 'x < 0'
@@ -365,10 +361,6 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
         headerName: calc.name || calc.field,
         filter: true,
         sortable: true,
-        enableRowGroup: true,
-        enablePivot: true,
-        enableValue: true,
-        aggFunc: 'sum',
         valueGetter: (params: any) => {
             if (!params.data) return null;
             return formulaEngine.evaluate(calc.formula, params.data);

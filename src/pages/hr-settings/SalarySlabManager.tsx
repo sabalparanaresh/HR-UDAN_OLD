@@ -51,7 +51,6 @@ const SalarySlabManager: React.FC = () => {
   const [selectedSlab, setSelectedSlab] = useState<SalarySlab | null>(null);
   const [testSalaryRate, setTestSalaryRate] = useState<number>(50000);
   const [loading, setLoading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [warningModalProps, setWarningModalProps] = useState<{isOpen: boolean, message?: string, onProceed?: () => void}>({isOpen: false});
 
@@ -291,38 +290,6 @@ const SalarySlabManager: React.FC = () => {
     await processSave();
   };
 
-  const handleSyncToP = async () => {
-    setIsSyncing(true);
-    try {
-      const statusRes = await invoke<any>('master_crud', {
-        tableName: 'settings',
-        operation: 'get',
-        id: 'connection_status'
-      });
-
-      if (statusRes?.value === 'DISCONNECTED') {
-        toast.warning("Manual sync blocked: System is DISCONNECTED", {
-          description: "Enable system connection in Settings to sync with Module P."
-        });
-        return;
-      }
-
-      const slabsToSync = slabs.map(s => ({
-        name: s.name,
-        description: s.description,
-        status: s.status ? 1 : 0,
-        components: s.components
-      }));
-
-      await invoke('sync_salary_slabs_to_p', { slabs: slabsToSync });
-      toast.success(`Successfully synced ${slabsToSync.length} slabs to Module P`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to sync slabs");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this slab?')) return;
 
@@ -523,20 +490,6 @@ const SalarySlabManager: React.FC = () => {
           <p className="text-gray-500 mt-1">Define and manage salary structures for employees</p>
         </div>
         <div className="flex items-center gap-3">
-          {currentMode === 'K' && (
-            <button
-              onClick={handleSyncToP}
-              disabled={isSyncing || slabs.length === 0}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 border border-indigo-200 text-indigo-600 rounded-lg text-sm font-bold transition-all shadow-sm",
-                (isSyncing || slabs.length === 0) ? "opacity-50 cursor-not-allowed" : "bg-indigo-50 hover:bg-indigo-100"
-              )}
-            >
-              {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              Sync All to P
-            </button>
-          )}
-
           <div className="flex items-center bg-white border border-gray-200 rounded-lg shadow-sm p-1">
             <button 
               onClick={downloadTemplate}

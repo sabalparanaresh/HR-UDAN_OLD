@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from '../../utils/xlsx';
+import { parseExcelTime } from '../../utils/excel/parseExcelTime';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -264,32 +265,14 @@ export default function ShiftSettings() {
         const typeIndex = headersRow.indexOf('type');
         const statusIndex = headersRow.indexOf('status');
 
-        const parseTimeValue = (val: any) => {
-          if (!val && val !== 0) return null;
-          if (typeof val === 'number') {
-            const totalMinutes = Math.round(val * 24 * 60);
-            return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 };
-          }
-          const s = String(val).trim();
-          if (!s) return null;
-          const [h, m] = s.split(':').map(n => parseInt(n) || 0);
-          return { hours: h || 0, minutes: m || 0 };
-        };
-
         const shiftsData = rows.slice(1).map(row => {
           const name = row[0];
           if (!name) return null;
           const description = row[1] || '';
           const is24HourCycle = row[2] == '1' || String(row[2]).toLowerCase() === 'true';
 
-          const formatTimeStr = (val: any, defaultVal: string) => {
-            const t = parseTimeValue(val);
-            if (!t) return defaultVal;
-            return `${String(t.hours).padStart(2, '0')}:${String(t.minutes).padStart(2, '0')}`;
-          };
-
-          const startTime = formatTimeStr(row[3], '08:00');
-          const endTime = formatTimeStr(row[4], '20:00');
+          const startTime = parseExcelTime(row[3]) || '08:00';
+          const endTime = parseExcelTime(row[4]) || '20:00';
           const totalWorkingHours = parseFloat(row[5]) || 12.0;
           const gracePeriodMins = parseInt(row[6]) || 15;
           const rawAlloc = String(typeIndex !== -1 ? row[typeIndex] : '').toUpperCase().trim();
@@ -303,17 +286,19 @@ export default function ShiftSettings() {
           const rules: AttendanceRule[] = [];
           for (let i = 0; i < 4; i++) {
             const baseIdx = 7 + (i * 3);
-            const from = parseTimeValue(row[baseIdx]);
-            const to = parseTimeValue(row[baseIdx + 1]);
+            const fromTimeStr = parseExcelTime(row[baseIdx]);
+            const toTimeStr = parseExcelTime(row[baseIdx + 1]);
             const val = parseFloat(row[baseIdx + 2]);
 
-            if (from && to) {
+            if (fromTimeStr && toTimeStr) {
+              const [fromH, fromM] = fromTimeStr.split(':').map(Number);
+              const [toH, toM] = toTimeStr.split(':').map(Number);
               rules.push({
                 id: crypto.randomUUID(),
-                fromHours: from.hours,
-                fromMinutes: from.minutes,
-                toHours: to.hours,
-                toMinutes: to.minutes,
+                fromHours: fromH,
+                fromMinutes: fromM,
+                toHours: toH,
+                toMinutes: toM,
                 attendanceValue: isNaN(val) ? 0 : val
               });
             }

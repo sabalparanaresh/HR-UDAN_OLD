@@ -92,6 +92,15 @@ function PayrollAnalytics({ currentUser }: { currentUser: any }) {
     }
   };
 
+  const kpis = useMemo(() => data?.kpi || { total_gross_latest: 0, total_net_latest: 0, total_ded_latest: 0, total_employees_paid: 0 }, [data]);
+  const forecast = useMemo(() => data?.forecast || { predicted_gross: 0, predicted_net: 0 }, [data]);
+  const trendData = data?.trendData || [];
+  const costCenterData = data?.costCenterData || [];
+  const wageTypeData = data?.wageTypeData || [];
+  const headData = data?.headData || [];
+
+  const widgetData = useMemo(() => ({ ...data, kpis, kpi: kpis, forecast, heads: headData }), [data, kpis, forecast, headData]);
+
   if (!hasAccess) {
     return (
       <div className="flex items-center justify-center h-64 border border-rose-200 bg-rose-50 rounded-lg">
@@ -108,15 +117,6 @@ function PayrollAnalytics({ currentUser }: { currentUser: any }) {
       </div>
     );
   }
-
-  const kpis = data?.kpi || { total_gross_latest: 0, total_net_latest: 0, total_ded_latest: 0, total_employees_paid: 0 };
-  const forecast = data?.forecast || { predicted_gross: 0, predicted_net: 0 };
-  const trendData = data?.trendData || [];
-  const costCenterData = data?.costCenterData || [];
-  const wageTypeData = data?.wageTypeData || [];
-  const headData = data?.headData || [];
-
-  const widgetData = useMemo(() => ({ ...data, kpis, kpi: kpis, forecast, heads: headData }), [data, kpis, forecast, headData]);
 
   // Handled by generic widget renderer in JSX
 

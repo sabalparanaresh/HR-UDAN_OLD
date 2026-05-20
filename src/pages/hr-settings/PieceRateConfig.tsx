@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { invokeCommand as invoke } from '../../services/apiClient';
 import { useAuthStore } from '../../store/authStore';
 import { RBACGuard } from '../../components/rbac';
-import { Plus, Save, Trash2, Edit2, Download, Upload, Loader2, X } from 'lucide-react';
+import { Plus, Save, Trash2, Edit2, Download, Upload, Loader2, X, FileSpreadsheet } from 'lucide-react';
+import { generatePieceRateTemplateFromSchema } from '../../modules/piece-rate/template/generatePieceRateTemplateFromSchema';
 
 interface Slab {
     min_pieces: number;
@@ -75,19 +76,33 @@ export default function PieceRateConfig() {
 
     
     const handleExport = () => {
-        const data = heads.map(h => ({
-            'Config Name': h.name,
-            'Type': h.calculation_type,
-            'Applicability': h.applicability,
-            'UOM': h.unit_of_measurement,
-            'Base Rate': h.fixed_rate || '',
-            'Effective Date': h.effective_date
-        }));
+        let data: any[] = [];
+        if (heads.length === 0) {
+            data = generatePieceRateTemplateFromSchema();
+        } else {
+            data = heads.map(h => ({
+                'Config Name': h.name,
+                'Type': h.calculation_type,
+                'Applicability': h.applicability,
+                'UOM': h.unit_of_measurement,
+                'Base Rate': h.fixed_rate || '',
+                'Effective Date': h.effective_date,
+                'Status': h.status === 1 ? 'ACTIVE' : 'INACTIVE'
+            }));
+        }
         
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(data);
         XLSX.utils.book_append_sheet(wb, ws, "Piece_Rates");
         XLSX.writeFile(wb, "Piece_Rate_Configs.xlsx");
+    };
+
+    const handleDownloadTemplate = () => {
+        const data = generatePieceRateTemplateFromSchema();
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, "Piece_Rates_Template");
+        XLSX.writeFile(wb, "Piece_Rate_Template.xlsx");
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,6 +181,9 @@ export default function PieceRateConfig() {
                 </div>
                 <div className="flex gap-2">
                     <RBACGuard permission="CompanySettings.edit">
+                        <button onClick={handleDownloadTemplate} className="app-btn app-btn-secondary flex items-center gap-2">
+                            <FileSpreadsheet size={16} /> Download Template
+                        </button>
                         <input type="file" id="bulk-upload" accept=".xlsx, .xls" className="hidden" onChange={handleFileUpload} />
                         <label htmlFor="bulk-upload" className="app-btn app-btn-secondary flex items-center gap-2 cursor-pointer">
                             {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16}/>} 

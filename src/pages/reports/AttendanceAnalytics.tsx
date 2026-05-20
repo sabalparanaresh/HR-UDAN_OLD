@@ -89,6 +89,14 @@ function AttendanceAnalytics({ currentUser }: { currentUser: any }) {
     }
   };
 
+  const kpis = useMemo(() => data?.kpi || { absenteeism_rate: 0, total_overtime_hours: 0, missed_punches: 0, total_staff: 0 }, [data]);
+  const forecast = useMemo(() => data?.forecast || { predicted_absences: 0, predicted_overtime: 0 }, [data]);
+  const trendData = data?.trendData || [];
+  const deptProductivity = data?.deptProductivity || [];
+  const shiftData = data?.shiftData || [];
+
+  const widgetData = useMemo(() => ({ ...data, kpis, kpi: kpis, forecast }), [data, kpis, forecast]);
+
   if (!hasAccess) {
     return (
       <div className="flex items-center justify-center h-64 border border-rose-200 bg-rose-50 rounded-lg">
@@ -105,14 +113,6 @@ function AttendanceAnalytics({ currentUser }: { currentUser: any }) {
       </div>
     );
   }
-
-  const kpis = data?.kpi || { absenteeism_rate: 0, total_overtime_hours: 0, missed_punches: 0, total_staff: 0 };
-  const forecast = data?.forecast || { predicted_absences: 0, predicted_overtime: 0 };
-  const trendData = data?.trendData || [];
-  const deptProductivity = data?.deptProductivity || [];
-  const shiftData = data?.shiftData || [];
-
-  const widgetData = useMemo(() => ({ ...data, kpis, kpi: kpis, forecast }), [data, kpis, forecast]);
 
   // Handled by generic widget renderer in JSX
 

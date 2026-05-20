@@ -13,6 +13,29 @@ export default function PayrollExceptions() {
     fetchExceptions();
   }, [searchMonth]);
 
+  const formatDateTime = (dateStr: string) => {
+    if (!dateStr) return { date: 'N/A', time: 'N/A' };
+    let isoStr = dateStr;
+    if (!isoStr.includes('T')) {
+      isoStr = isoStr.replace(' ', 'T');
+    }
+    if (isoStr.includes('T') && !isoStr.endsWith('Z') && !isoStr.includes('+') && !isoStr.includes('-')) {
+      isoStr += 'Z';
+    }
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) {
+      return { date: dateStr, time: '' };
+    }
+    try {
+      return {
+        date: format(d, 'dd MMM yyyy'),
+        time: format(d, 'HH:mm:ss')
+      };
+    } catch (err) {
+      return { date: dateStr, time: '' };
+    }
+  };
+
   const fetchExceptions = async () => {
     setLoading(true);
     try {
@@ -82,30 +105,35 @@ export default function PayrollExceptions() {
                     </div>
                   </td>
                 </tr>
-              ) : exceptions.map(ex => (
-                <tr key={ex.id} className="border-b border-app-border hover:bg-slate-50 transition-colors">
-                  <td className="p-4 whitespace-nowrap">
-                    <div className="flex flex-col text-sm">
-                      <span className="font-bold text-primary-navy">{format(new Date(ex.created_at), 'dd MMM yyyy')}</span>
-                      <span className="text-xs text-text-muted font-mono mt-0.5">{format(new Date(ex.created_at), 'HH:mm:ss')}</span>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-primary-navy">{ex.employee_name}</span>
-                      <span className="text-xs font-mono text-text-muted mt-0.5">{ex.emp_code}</span>
-                    </div>
-                  </td>
-                  <td className="p-4 whitespace-nowrap">
-                    <span className="inline-flex items-center px-2 py-1 bg-rose-50 text-rose-700 text-xs font-black tracking-widest uppercase rounded">
-                      {ex.exception_type.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="p-4 text-sm font-medium text-text-muted max-w-md">
-                    {ex.message}
-                  </td>
-                </tr>
-              ))}
+              ) : exceptions.map(ex => {
+                const dt = formatDateTime(ex.created_at);
+                return (
+                  <tr key={ex.id} className="border-b border-app-border hover:bg-slate-50 transition-colors">
+                    <td className="p-4 whitespace-nowrap">
+                      <div className="flex flex-col text-sm">
+                        <span className="font-bold text-primary-navy">{dt.date}</span>
+                        {dt.time && (
+                          <span className="text-xs text-text-muted font-mono mt-0.5">{dt.time}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-primary-navy">{ex.employee_name}</span>
+                        <span className="text-xs font-mono text-text-muted mt-0.5">{ex.emp_code}</span>
+                      </div>
+                    </td>
+                    <td className="p-4 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2 py-1 bg-rose-50 text-rose-700 text-xs font-black tracking-widest uppercase rounded">
+                        {(ex.exception_type || '').replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="p-4 text-sm font-medium text-text-muted max-w-md">
+                      {ex.message}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
