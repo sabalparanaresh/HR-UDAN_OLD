@@ -87,6 +87,8 @@ export const COMMAND_MAP: Record<string, CommandHandler> = {
   'calculate_k_module_wages': payroll.calculateKModuleWages,
   'calculate_p_module_statutory': payroll.calculatePModuleStatutory,
   'consolidate_final_payroll': payroll.consolidateFinalPayroll,
+  'process_payroll': payroll.processPayroll,
+  'lock_final_payroll': payroll.lockFinalPayroll,
   'commit_payroll': payroll.commitPayroll,
   'update_payroll_status': payroll.updatePayrollStatus,
   'get_processed_payroll': payroll.getProcessedPayroll,

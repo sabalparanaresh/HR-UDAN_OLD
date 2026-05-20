@@ -6,17 +6,18 @@ import { Mapper } from '../utils/mapper.js';
 import { mapKeys, toSnakeCase, toCamelCase, sanitizeData } from '../utils/helpers.js';
 import { logError } from '../utils/logger.js';
 import { isKConnected } from '../utils/syncCircuitBreaker.js';
+import { SalarySlabSyncService } from '../services/SalarySlabSyncService.js';
 
 const MIRROR_TABLES = [
   'locations', 'divisions', 'groups', 'departments', 
   'categories', 'classes', 'designations', 'org_hierarchy', 
   'employment_types', 'employee_statuses', 'holidays', 'salary_heads',
-  'company_config', 'banks', 'pincode_master', 'salary_slabs', 'shifts', 'weekly_off', 'working_day_types'
+  'company_config', 'banks', 'pincode_master', 'shifts', 'weekly_off', 'working_day_types'
 ];
 
 // Helper for sync salary heads (Removed in favor of unified MIRROR_TABLES logic)
 
-export const masterCrud: CommandHandler = (ctx, args) => {
+export const masterCrud: CommandHandler = async (ctx, args) => {
   const { primaryDb, statutoryDb, res } = ctx;
   const rawTableName = args.table_name || args.tableName;
   // Normalize table name to lowercase
@@ -201,6 +202,11 @@ export const masterCrud: CommandHandler = (ctx, args) => {
         }
       }
       
+      if (module_type === 'K' && table_name === 'salary_slabs') {
+        const newId = result.lastInsertRowid;
+        await SalarySlabSyncService.handleSync(primaryDb, statutoryDb, 'create', newId, processedData);
+      }
+      
       res.json({ status: 'success' });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -275,6 +281,10 @@ export const masterCrud: CommandHandler = (ctx, args) => {
         }
       }
       
+      if (module_type === 'K' && table_name === 'salary_slabs') {
+        await SalarySlabSyncService.handleSync(primaryDb, statutoryDb, 'update', id, processedData);
+      }
+      
       res.json({ status: 'success' });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -288,6 +298,10 @@ export const masterCrud: CommandHandler = (ctx, args) => {
       } catch (mirrorErr) {
         logError(statutoryDb, 'WARN', `[Mirror Sync] Failed to mirror 'delete' for ${table_name} to Statutory`, mirrorErr);
       }
+    }
+
+    if (module_type === 'K' && table_name === 'salary_slabs') {
+      await SalarySlabSyncService.handleSync(primaryDb, statutoryDb, 'delete', id);
     }
 
     res.json({ status: 'success' });

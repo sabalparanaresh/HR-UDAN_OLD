@@ -2,6 +2,7 @@ import { Worker } from 'worker_threads';
 import path from 'path';
 import { CommandHandler } from './types.js';
 import { isKConnected } from '../utils/helpers.js';
+import { AttendanceBulkProcessor } from '../services/AttendanceBulkProcessor.js';
 
 export const fetchBiometricLogs: CommandHandler = (ctx, args) => {
   const { primaryDb, statutoryDb, res } = ctx;
@@ -183,64 +184,39 @@ export const processAttendance: CommandHandler = (ctx, args) => {
   res.json({ status: 'success' });
 };
 
-let activeBulkWorker: Worker | null = null;
-
 export const bulkAttendanceV2: CommandHandler = (ctx, args) => {
   const { res } = ctx;
   const { fromDate, toDate, filters, moduleType } = args;
 
   const dbPath = moduleType === 'P' ? 'data/statutory.db' : 'data/primary.db';
 
-  if (activeBulkWorker) {
-    activeBulkWorker.terminate();
-    activeBulkWorker = null;
-  }
-
   import('../legacyRouter.js').then(({ emitEvent }) => {
     emitEvent('bulk-attendance-progress', { processed: 0, total: 100, percentage: 0 });
 
-    const worker = new Worker(path.resolve('src-server/workers/bulkAttendanceWorker.ts'), {
-      execArgv: ['--import', 'tsx'],
-      workerData: {
-        dbPath,
-        fromDate,
-        toDate,
-        filters
-      }
-    });
+    const processor = AttendanceBulkProcessor.getInstance();
     
-    activeBulkWorker = worker;
+    processor.generateBulk(
+      dbPath,
+      fromDate,
+      toDate,
+      filters,
+      (progress) => {
+        emitEvent('bulk-attendance-progress', progress);
+      },
+      (result) => {
+        emitEvent('bulk-attendance-complete', result);
+      },
+      (err) => {
+        emitEvent('bulk-attendance-error', { error: err.message || String(err) });
+      }
+    );
 
     // Return immediately to client
     if (!res.headersSent) {
       res.json({ status: 'started' });
     }
-
-    worker.on('message', (msg) => {
-      if (msg.type === 'progress') {
-        emitEvent('bulk-attendance-progress', msg.data);
-      } else if (msg.type === 'done') {
-        activeBulkWorker = null;
-        emitEvent('bulk-attendance-complete', msg.data);
-      } else if (msg.type === 'error') {
-        activeBulkWorker = null;
-        emitEvent('bulk-attendance-error', { error: msg.error });
-      }
-    });
-
-    worker.on('error', (err) => {
-      activeBulkWorker = null;
-      emitEvent('bulk-attendance-error', { error: (err as any).message });
-    });
-
-    worker.on('exit', (code) => {
-      activeBulkWorker = null;
-      if (code !== 0) {
-        emitEvent('bulk-attendance-error', { error: `Worker stopped with exit code ${code}` });
-      }
-    });
   }).catch(err => {
-    res.status(500).json({ error: 'Failed to initialize worker' });
+    res.status(500).json({ error: 'Failed to initialize processor' });
   });
 };
 
@@ -266,8 +242,9 @@ export const getAttendancePunches: CommandHandler = (ctx, args) => {
 };
 
 export const cancelBulkAttendance: CommandHandler = (ctx, args) => {
-  if (activeBulkWorker) {
-    activeBulkWorker.postMessage({ type: 'cancel' });
+  const processor = AttendanceBulkProcessor.getInstance();
+  if (processor.getActiveStatus()) {
+    processor.cancel();
     ctx.res.json({ status: 'success', message: 'Cancellation requested' });
   } else {
     ctx.res.json({ status: 'success', message: 'No active worker' });

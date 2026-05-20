@@ -98,6 +98,18 @@ export function runPostSetupMigrations(primaryDb: Database.Database, statutoryDb
   const createEmpSearchPriorityIndex = (db: Database.Database) => {
     try {
       db.exec(`CREATE INDEX IF NOT EXISTS idx_emp_search_priority ON employees(status, emp_code, name)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_code ON employees(emp_code)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_aadhar_name ON employees(full_name_aadhar)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_first_name ON employees(first_name)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_last_name ON employees(last_name)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_aadhar_no ON employees(aadhar_no)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_mobile ON employees(mobile)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_uan_no ON employees(uan_no)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_pf_number ON employees(pf_number)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_esi_ip_number ON employees(esi_ip_number)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_driving_licence ON employees(driving_licence)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_voter_id ON employees(voter_id)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_employees_passport_no ON employees(passport_no)`);
     } catch (e) {
       logError(db, 'ERROR', 'Could not create idx_emp_search_priority', e);
     }

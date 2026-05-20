@@ -360,23 +360,31 @@ export const masterCrud: CommandHandler = (ctx, args) => {
         params.push(search, search, search);
         countParams.push(search, search, search);
       } else if (table_name === 'employees') {
-        const empCols = db.prepare('PRAGMA table_info(employees)').all() as any[];
-        const hasEmpCode = empCols.some(c => c.name === 'emp_code');
-        const hasMobile = empCols.some(c => c.name === 'mobile');
+        const cleanSearch = String(args.search || '').trim();
+        const searchContains = `%${cleanSearch}%`;
         
-        let searchCond = 'name LIKE ?';
-        const searchParams = [search];
+        conditions.push(`(
+          emp_code LIKE ? OR 
+          full_name_aadhar LIKE ? OR 
+          first_name LIKE ? OR 
+          last_name LIKE ? OR 
+          aadhar_no LIKE ? OR 
+          mobile LIKE ? OR 
+          uan_no LIKE ? OR 
+          pf_number LIKE ? OR 
+          esi_ip_number LIKE ? OR 
+          driving_licence LIKE ? OR 
+          voter_id LIKE ? OR 
+          passport_no LIKE ? OR 
+          name LIKE ?
+        )`);
         
-        if (hasEmpCode) {
-          searchCond += ' OR emp_code LIKE ?';
-          searchParams.push(search);
-        }
-        if (hasMobile) {
-          searchCond += ' OR mobile LIKE ?';
-          searchParams.push(search);
-        }
+        const searchParams = [
+          searchContains, searchContains, searchContains, searchContains, searchContains,
+          searchContains, searchContains, searchContains, searchContains, searchContains,
+          searchContains, searchContains, searchContains
+        ];
         
-        conditions.push(`(${searchCond})`);
         params.push(...searchParams);
         countParams.push(...searchParams);
       } else {
@@ -390,6 +398,78 @@ export const masterCrud: CommandHandler = (ctx, args) => {
       const whereClause = ' WHERE ' + conditions.join(' AND ');
       sql += whereClause;
       countSql += whereClause;
+    }
+    
+    if (table_name === 'employees' && args.search) {
+      const cleanSearch = String(args.search || '').trim();
+      const searchExact = cleanSearch;
+      const searchStart = `${cleanSearch}%`;
+      const searchContains = `%${cleanSearch}%`;
+      
+      sql += ` ORDER BY (
+        CASE 
+          WHEN emp_code = ? THEN 1000
+          WHEN emp_code LIKE ? THEN 950
+          WHEN emp_code LIKE ? THEN 900
+          
+          WHEN full_name_aadhar = ? THEN 850
+          WHEN full_name_aadhar LIKE ? THEN 800
+          WHEN full_name_aadhar LIKE ? THEN 750
+          
+          WHEN first_name = ? THEN 700
+          WHEN first_name LIKE ? THEN 650
+          WHEN first_name LIKE ? THEN 600
+          
+          WHEN last_name = ? THEN 550
+          WHEN last_name LIKE ? THEN 500
+          WHEN last_name LIKE ? THEN 450
+          
+          WHEN aadhar_no = ? THEN 400
+          WHEN aadhar_no LIKE ? THEN 380
+          
+          WHEN mobile = ? THEN 350
+          WHEN mobile LIKE ? THEN 330
+          
+          WHEN uan_no = ? THEN 300
+          WHEN uan_no LIKE ? THEN 280
+          
+          WHEN pf_number = ? THEN 250
+          WHEN pf_number LIKE ? THEN 230
+          
+          WHEN esi_ip_number = ? THEN 200
+          WHEN esi_ip_number LIKE ? THEN 180
+          
+          WHEN driving_licence = ? THEN 150
+          WHEN driving_licence LIKE ? THEN 130
+          
+          WHEN voter_id = ? THEN 100
+          WHEN voter_id LIKE ? THEN 80
+          
+          WHEN passport_no = ? THEN 50
+          WHEN passport_no LIKE ? THEN 30
+          
+          WHEN name = ? THEN 20
+          WHEN name LIKE ? THEN 10
+          
+          ELSE 0
+        END
+      ) DESC, emp_code ASC`;
+      
+      params.push(
+        searchExact, searchStart, searchContains,
+        searchExact, searchStart, searchContains,
+        searchExact, searchStart, searchContains,
+        searchExact, searchStart, searchContains,
+        searchExact, searchContains,
+        searchExact, searchContains,
+        searchExact, searchContains,
+        searchExact, searchContains,
+        searchExact, searchContains,
+        searchExact, searchContains,
+        searchExact, searchContains,
+        searchExact, searchContains,
+        searchExact, searchContains
+      );
     }
     
     const limit = parseInt(String(args.limit || 10000));

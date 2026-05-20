@@ -6,6 +6,8 @@ import { logError } from '../utils/logger.js';
 import { isKConnected } from '../utils/syncCircuitBreaker.js';
 import { PayrollEngine } from '../services/PayrollEngine.js';
 import { recalculateCanteenRules } from '../utils/canteen.js';
+import { EmployeeBulkUploadValidator } from '../validation/EmployeeBulkUploadValidator.js';
+import { EmployeeBulkUploadMapper } from '../utils/EmployeeBulkUploadMapper.js';
 
 export const syncEmployeeToPakka: CommandHandler = (ctx, args) => {
   const { statutoryDb, res } = ctx;
@@ -284,6 +286,47 @@ export const bulkEmployeeUpsert: CommandHandler = (ctx, args) => {
     logError(db, 'INFO', 'Index already exists or failed to create on emp_code', e); 
   }
 
+  // Load master tables configurations
+  const tables = [
+    'groups', 'departments', 'designations', 'locations', 'categories', 'classes', 
+    'employment_types', 'employee_statuses', 'shifts', 'grades', 'salary_slabs', 
+    'working_day_types'
+  ];
+  
+  const masters: Record<string, any[]> = {};
+  for (const table of tables) {
+    try {
+      if (db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(table)) {
+        masters[table] = db.prepare(`SELECT * FROM ${table}`).all();
+      } else {
+        masters[table] = [];
+      }
+    } catch (e) {
+      masters[table] = [];
+    }
+  }
+  
+  try {
+    if (db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='org_hierarchy'`).get('org_hierarchy')) {
+      masters['org_hierarchy'] = db.prepare(`SELECT * FROM org_hierarchy`).all();
+    } else {
+      masters['org_hierarchy'] = [];
+    }
+  } catch (e) {
+    masters['org_hierarchy'] = [];
+  }
+
+  // 1. Audit and validate all raw records before proceeding
+  const allValidationErrors: string[] = [];
+  records.forEach((rec: any, index: number) => {
+    const rowErrors = EmployeeBulkUploadValidator.validateRow(rec, index, db, masters);
+    allValidationErrors.push(...rowErrors);
+  });
+
+  if (allValidationErrors.length > 0) {
+    return res.status(400).json({ error: allValidationErrors.join('\n') });
+  }
+
   const columns = db.prepare(`PRAGMA table_info(employees)`).all() as any[];
   const columnNames = columns.map(c => c.name);
   const statutoryDbColumns = statutoryDb.prepare(`PRAGMA table_info(employees)`).all() as any[];
@@ -295,18 +338,9 @@ export const bulkEmployeeUpsert: CommandHandler = (ctx, args) => {
 
   const syncRecordsP: any[] = [];
   const processedRecords = records.map((rec: any, index: number) => {
-    // 1. Map headers using dictionary
-    const mappedRec: any = {};
-    Object.keys(rec).forEach(key => {
-      const lowerKey = key.toLowerCase().trim();
-      const mappedKey = HEADER_MAPPING[lowerKey] || toSnakeCase(key);
-      mappedRec[mappedKey] = rec[key];
-    });
+    // 2. Map standard fields using centralized mapper
+    const r = EmployeeBulkUploadMapper.mapRowToDb(rec, masters, moduleType);
 
-    const r = mappedRec;
-    const jsonFields = ['pf_history', 'esi_history', 'bank_history', 'family_members', 'employment_history'];
-    jsonFields.forEach(f => { if (r[f] && typeof r[f] !== 'string') r[f] = JSON.stringify(r[f]); });
-    
     // Age based logic (The "Smart Auditor")
     if (r.dob) {
       const birth = new Date(r.dob);
@@ -330,15 +364,12 @@ export const bulkEmployeeUpsert: CommandHandler = (ctx, args) => {
       );
     }
     
-    // 2. Default status to 1
-    if (r.status === undefined || r.status === null || r.status === '') r.status = 1;
-
     if (moduleType === 'K' && isKConnected(primaryDb)) {
       const paymentMode = String(r.payment_mode || '').toLowerCase();
       const hasBookJoining = r.book_joining_date && String(r.book_joining_date).trim() !== '';
       const isAfterInc = !incorporationDate || (hasBookJoining && r.book_joining_date >= incorporationDate);
       
-      // 4. Logging for skipped records due to Incorporation Date
+      // Logging for skipped records due to Incorporation Date
       if (hasBookJoining && !isAfterInc) {
         console.log(`[Bulk Import Skip] Row ${index + 1} (Emp: ${r.emp_code}): Book Joining Date ${r.book_joining_date} is before Incorporation Date ${incorporationDate}`);
       }
@@ -347,9 +378,9 @@ export const bulkEmployeeUpsert: CommandHandler = (ctx, args) => {
       if (['bank transfer', 'cheque'].includes(paymentMode)) isBankValid = !!(r.account_no && r.ifsc_code);
       else if (paymentMode === 'cash') isBankValid = false;
 
-      if (hasBookJoining && isAfterInc && isBankValid && (r.slab_id || r.slab_name)) {
+      if (hasBookJoining && isAfterInc && isBankValid && r.slab_id) {
         try {
-          const slabVal = r.slab_id || r.slab_name;
+          const slabVal = r.slab_id;
           const slab = salarySlabsP.find(s => s.id === slabVal || (s.name || s.slab_name || '').toLowerCase() === String(slabVal).toLowerCase());
           const targetWage = r.statutory_wage_amount || r.wage_amount;
           if (slab && targetWage) {
@@ -359,8 +390,8 @@ export const bulkEmployeeUpsert: CommandHandler = (ctx, args) => {
             const filteredP: any = {};
             statutoryColumnNames.forEach(col => { if (pRec[col] !== undefined && col !== 'id') filteredP[col] = pRec[col]; });
 
-            if (pRec.reporting_to_emp_code) filteredP._reporting_to_emp_code = pRec.reporting_to_emp_code;
-            if (pRec.parent_emp_code) filteredP._parent_emp_code = pRec.parent_emp_code;
+            if (pRec._reporting_to_emp_code) filteredP._reporting_to_emp_code = pRec._reporting_to_emp_code;
+            if (pRec._parent_emp_code) filteredP._parent_emp_code = pRec._parent_emp_code;
             syncRecordsP.push(filteredP);
           }
         } catch (e) {
@@ -369,14 +400,14 @@ export const bulkEmployeeUpsert: CommandHandler = (ctx, args) => {
       }
     }
 
-    // 5. Fix processedRecords mapping to match schema
+    // Processed K record filtering based on DB schema
     const filtered: any = {};
     columnNames.forEach(col => { 
       if (r[col] !== undefined && col !== 'id') filtered[col] = r[col]; 
     });
 
-    if (r.reporting_to_emp_code) filtered._reporting_to_emp_code = r.reporting_to_emp_code;
-    if (r.parent_emp_code) filtered._parent_emp_code = r.parent_emp_code;
+    if (r._reporting_to_emp_code) filtered._reporting_to_emp_code = r._reporting_to_emp_code;
+    if (r._parent_emp_code) filtered._parent_emp_code = r._parent_emp_code;
     return filtered;
   });
 

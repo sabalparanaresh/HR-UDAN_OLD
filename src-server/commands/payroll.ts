@@ -331,7 +331,7 @@ export const getPayrollExceptions: CommandHandler = (ctx, args) => {
     FROM payroll_exceptions pe
     JOIN employees e ON pe.employee_id = e.id
     ${month ? 'WHERE pe.salary_month = ?' : ''}
-    ORDER BY created_at DESC
+    ORDER BY pe.created_at DESC
   `;
   
   const data = month ? primaryDb.prepare(sql).all(month) : primaryDb.prepare(sql).all();
