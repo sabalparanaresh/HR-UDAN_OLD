@@ -1,4 +1,4 @@
-import { invokeCommand as invoke } from '../apiClient';
+import { invokeCommand as invoke, fetchApi } from '../apiClient';
 
 export interface ApiError {
   message: string;

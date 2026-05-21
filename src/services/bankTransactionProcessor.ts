@@ -1,4 +1,4 @@
-import { invokeCommand as invoke } from './apiClient';
+import { fetchApi } from './apiClient';
 import { BankAccountConfig } from '../hooks/useBankAccountConfig';
 import { resolveTemplateVariable } from './templateVariableResolver';
 
@@ -26,11 +26,14 @@ export async function processBankTransaction({
   const startNo = bankConfig.reference_start_no ? parseInt(bankConfig.reference_start_no, 10) : 1;
   const count = exportData.length;
   
-  const assignedReferences: string[] = await invoke('reserve_bank_reference_numbers', {
-    bankName: bankConfig.bank,
-    count: count,
-    startNo: startNo,
-    moduleType: currentMode
+  const assignedReferences: string[] = await fetchApi('/api/banking/reserve-references', {
+    method: 'POST',
+    headers: { 'x-module-type': currentMode },
+    body: JSON.stringify({
+      bankName: bankConfig.bank,
+      count: count,
+      startNo: startNo
+    })
   });
 
   const mappedData = exportData.map((record, index) => {
@@ -87,11 +90,14 @@ export async function processBankTransaction({
   });
 
   // Now hand off to actual generation
-  await invoke('generate_bank_excel', {
-    bank_name: bankConfig.bank,
-    data: mappedData,
-    payment_date: paymentDate,
-    module_type: currentMode
+  await fetchApi('/api/banking/generate-excel', {
+    method: 'POST',
+    headers: { 'x-module-type': currentMode },
+    body: JSON.stringify({
+      bank_name: bankConfig.bank,
+      data: mappedData,
+      payment_date: paymentDate
+    })
   });
 
   return mappedData.length;

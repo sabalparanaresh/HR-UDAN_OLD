@@ -2,7 +2,7 @@ import { ProtectedRoute } from './components/auth';
 import { AuthScreen, LoginForm, PasswordResetForm } from './modules/auth';
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { invokeCommand as invoke } from './services/apiClient';
+import { invokeCommand as invoke, fetchApi } from './services/apiClient';
 import { User } from './types';
 import Layout from './components/layout/Layout';
 
@@ -46,11 +46,11 @@ export default function App() {
       // Process K -> P Sync Queue every 30 seconds
       const processSyncQueue = async () => {
         try {
-          const res = await invoke<any>('master_crud', {
+          const res = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             operation: 'process_sync_queue',
             tableName: 'employee_sync_queue',
             moduleType: 'K'
-          });
+          }) });
           if (res?.processed && res.processed > 0) {
             console.log(`Processed ${res.processed} pending K -> P sync items`);
           }

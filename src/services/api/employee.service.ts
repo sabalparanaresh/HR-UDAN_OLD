@@ -1,5 +1,6 @@
 import { BaseService } from './base.service';
 import { Employee } from '../../types';
+import { fetchApi } from '../apiClient';
 
 interface ListQuery {
   page?: number;
@@ -21,54 +22,32 @@ export class EmployeeService extends BaseService {
    * Fetch all active employees via master_crud
    */
   static async getEmployees(query: ListQuery): Promise<ListResponse> {
-    return this.call<ListResponse>('master_crud', {
-      tableName: this.TABLE,
-      operation: 'list',
-      moduleType: query.moduleType,
-      limit: query.pageSize,
-      offset: (query.page || 0) * (query.pageSize || 50),
-      search: query.search,
-      filters: query.filters,
-      includeTotal: true,
-      _v: Date.now()
-    });
+    const params = new URLSearchParams();
+    if (query.moduleType) params.append('module_type', query.moduleType);
+    if (query.pageSize) params.append('limit', String(query.pageSize));
+    if (query.page) params.append('offset', String(query.page * (query.pageSize || 50)));
+    if (query.search) params.append('search', query.search);
+    // Note: filters omitted for brevity in REST query, but could be passed as JSON param
+    if (query.filters) params.append('filters', JSON.stringify(query.filters));
+    
+    return fetchApi<ListResponse>(`/api/master-data/${this.TABLE}?${params.toString()}`);
   }
 
-  /**
-   * Fetch a single employee by ID
-   */
   static async getEmployeeById(id: number, moduleType: string): Promise<Employee> {
-    const result = await this.call<any>('master_crud', {
-      tableName: this.TABLE,
-      operation: 'get',
-      id,
-      moduleType
-    });
-    return result;
+    return fetchApi<any>(`/api/master-data/${this.TABLE}/${id}?module_type=${moduleType}`);
   }
 
-  /**
-   * Add a new employee
-   */
   static async addEmployee(employee: Partial<Employee>, moduleType: string): Promise<number> {
-    return this.call<number>('master_crud', {
-      tableName: this.TABLE,
-      operation: 'create',
-      moduleType,
-      data: employee
+    return fetchApi<number>(`/api/master-data/${this.TABLE}`, {
+      method: 'POST',
+      body: JSON.stringify({ ...employee, module_type: moduleType })
     });
   }
 
-  /**
-   * Update an existing employee
-   */
   static async updateEmployee(id: number, employee: Partial<Employee>, moduleType: string): Promise<void> {
-    return this.call<void>('master_crud', {
-      tableName: this.TABLE,
-      operation: 'update',
-      id,
-      moduleType,
-      data: employee
+    return fetchApi<void>(`/api/master-data/${this.TABLE}/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...employee, module_type: moduleType })
     });
   }
 }
