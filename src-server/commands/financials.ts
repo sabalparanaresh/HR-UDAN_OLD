@@ -20,93 +20,55 @@ export const getExistingAdvances: CommandHandler = (ctx, args) => {
 };
 
 export const postAdvanceTransactions: CommandHandler = (ctx, args) => {
-  const { primaryDb, statutoryDb, res, req } = ctx;
+  const { primaryDb, statutoryDb, res } = ctx;
+  const { advances, monthYear, authorisedBy, paymentMode, remark } = args;
   
-          const { advances, monthYear, userId, authorisedBy, paymentMode, remark } = args;
-          const [yyyy, mm] = monthYear.split('-');
-          const formattedMonthYear = `${mm}-${yyyy}`;
+  if (!advances || !monthYear) {
+    return res.status(400).json({ error: 'Missing required parameters' });
+  }
 
-          const allocationType = paymentMode === 'CASH' ? 'K_ONLY' : 'KP';
-          const advanceHead = primaryDb.prepare("SELECT id FROM salary_heads WHERE system_head IN ('ADVANCE_SALARY', 'ADVANCE') AND status = 1 AND allocation_type = ? LIMIT 1").get(allocationType) as any;
-          if (!advanceHead) {
-             const typeStr = paymentMode === 'CASH' ? 'K Only (Cash)' : 'KP (Bank/Cheque)';
-             res.status(400).json({ error: `Please define an Advance salary head with allocation type '${typeStr}' in Master data.` });
-             
-}
-};
-
-export const getCashTransactions: CommandHandler = (ctx, args) => {
-  const { primaryDb, statutoryDb, res, req } = ctx;
+  const batchId = `ADV-${Date.now()}`;
   
-          const db = args.module_type === 'P' ? statutoryDb : primaryDb;
-          const txns = db.prepare(`
-            SELECT *, balance_amount as balance
-            FROM cash_transactions
-            WHERE module_type = ?
-          `).all(args.module_type) as any[];
+  try {
+    primaryDb.transaction(() => {
+      const advHead = primaryDb.prepare("SELECT * FROM salary_heads WHERE (name LIKE '%ADVANCE%' OR name = 'ADVANCE') AND is_deduction = 1 LIMIT 1").get() as any;
+      if (!advHead) {
+        throw new Error("Advance salary head not found. Please ensure a deduction head named 'ADVANCE' exists.");
+      }
 
-          res.json(txns);
-          
-};
+      const shouldSync = advHead.applicability === 'KP';
+      let statAdvHead: any = null;
+      if (shouldSync) {
+        statAdvHead = statutoryDb.prepare("SELECT id FROM salary_heads WHERE name = ?").get(advHead.name);
+      }
 
-export const addCashPayment: CommandHandler = (ctx, args) => {
-  const { primaryDb, statutoryDb, res, req } = ctx;
-  const db = args.module_type === 'P' ? statutoryDb : primaryDb;
-          const { transaction_id, amount, user, action } = args;
-          
-          try {
-            db.prepare('BEGIN IMMEDIATE').run();
-            // Optional: Check if overpaying, but not strictly needed if we assume trust or add it later
-            db.prepare(`
-              INSERT INTO cash_payment_entries (transaction_id, amount, action, created_by)
-              VALUES (?, ?, ?, ?)
-            `).run(transaction_id, amount, action || 'Payment', user || 'System');
-            
-            db.prepare('COMMIT').run();
-            res.json({ status: 'success' });
-          } catch (e: any) {
-            db.prepare('ROLLBACK').run();
-            res.status(500).json({ error: e.message });
-          
-}
-};
+      for (const entry of advances) {
+        const amount = entry.amount || entry.advance_amount;
+        if (!amount || amount <= 0) continue;
 
-export const reverseCashPayment: CommandHandler = (ctx, args) => {
-  const { primaryDb, statutoryDb, res, req } = ctx;
-  const db = args.module_type === 'P' ? statutoryDb : primaryDb;
-          const { transaction_id, user } = args;
+        primaryDb.prepare(`
+          INSERT INTO advance_entries (batch_id, emp_id, amount, payment_mode, wage_month, status)
+          VALUES (?, ?, ?, ?, ?, 'COMMITTED')
+        `).run(batchId, entry.emp_id, amount, paymentMode || 'CASH', monthYear);
 
-          try {
-            db.prepare('BEGIN IMMEDIATE').run();
-            // Find total paid
-            const row = db.prepare(`SELECT COALESCE(SUM(amount), 0) as paid FROM cash_payment_entries WHERE transaction_id = ?`).get(transaction_id) as any;
-            if (row && row.paid > 0) {
-              db.prepare(`
-                INSERT INTO cash_payment_entries (transaction_id, amount, action, created_by)
-                VALUES (?, ?, ?, ?)
-              `).run(transaction_id, -row.paid, 'Reversal', user || 'System');
-            }
-            db.prepare('COMMIT').run();
-            res.json({ status: 'success' });
-          } catch (e: any) {
-            db.prepare('ROLLBACK').run();
-            res.status(500).json({ error: e.message });
-          
-}
-};
+        primaryDb.prepare(`
+          INSERT INTO salary_transactions (transaction_type, salary_month_year, emp_id, head_id, amount, remark, authorised_by, is_bulk_entry)
+          VALUES ('DEDUCTION', ?, ?, ?, ?, ?, ?, 1)
+        `).run(monthYear, entry.emp_id, advHead.id, amount, remark || '', authorisedBy || null);
 
-export const getCashPaymentHistory: CommandHandler = (ctx, args) => {
-  const { primaryDb, statutoryDb, res, req } = ctx;
-  
-          const db = args.module_type === 'P' ? statutoryDb : primaryDb;
-          const { transaction_id } = args;
-          const history = db.prepare(`
-            SELECT * FROM cash_payment_entries
-            WHERE transaction_id = ?
-            ORDER BY created_at DESC
-          `).all(transaction_id);
-          res.json(history);
-          
+        if (shouldSync && statAdvHead) {
+          statutoryDb.prepare(`
+            INSERT INTO salary_transactions (transaction_type, salary_month_year, emp_id, head_id, amount, remark, authorised_by, is_bulk_entry)
+            VALUES ('DEDUCTION', ?, ?, ?, ?, ?, ?, 1)
+          `).run(monthYear, entry.emp_id, statAdvHead.id, amount, remark || '', authorisedBy || null);
+        }
+      }
+    })();
+    res.json({ status: 'success', batchId });
+  } catch (err: any) {
+    console.error("[Advance] Post failed:", err);
+    res.status(500).json({ error: err.message });
+  }
 };
 
 export const calculateBulkAdvance: CommandHandler = (ctx, args) => {
@@ -243,59 +205,4 @@ export const getAdvanceEligibleAmount: CommandHandler = (ctx, args) => {
 
           res.json(results);
           
-};
-
-export const commitBulkAdvance: CommandHandler = (ctx, args) => {
-  const { primaryDb, statutoryDb, res, req } = ctx;
-  const { entries, wageMonth, remark, authorizerId, processDate } = args;
-          const batchId = `ADV-${Date.now()}`;
-          
-          try {
-            primaryDb.transaction(() => {
-              const advHead = primaryDb.prepare("SELECT * FROM salary_heads WHERE (name LIKE '%ADVANCE%' OR name = 'ADVANCE') AND is_deduction = 1 LIMIT 1").get() as any;
-              if (!advHead) {
-                throw new Error("Advance salary head not found. Please ensure a deduction head named 'ADVANCE' exists.");
-              }
-
-              // Check if we need to sync to Statutory
-              const shouldSync = advHead.applicability === 'KP';
-              let statAdvHead: any = null;
-              if (shouldSync) {
-                statAdvHead = statutoryDb.prepare("SELECT id FROM salary_heads WHERE name = ?").get(advHead.name);
-              }
-
-              for (const entry of entries) {
-                if (entry.advance_amount <= 0) continue;
-
-                primaryDb.prepare(`
-                  INSERT INTO advance_entries (batch_id, emp_id, amount, payment_mode, wage_month, status)
-                  VALUES (?, ?, ?, ?, ?, 'COMMITTED')
-                `).run(batchId, entry.emp_id, entry.advance_amount, entry.payment_mode, wageMonth);
-
-                primaryDb.prepare(`
-                  INSERT INTO salary_transactions (transaction_type, salary_month_year, emp_id, head_id, amount, remark, authorised_by, is_bulk_entry, ref_process_date)
-                  VALUES ('DEDUCTION', ?, ?, ?, ?, ?, ?, 1, ?)
-                `).run(wageMonth, entry.emp_id, advHead.id, entry.advance_amount, remark, authorizerId, processDate || null);
-
-                if (shouldSync && statAdvHead) {
-                  statutoryDb.prepare(`
-                    INSERT INTO salary_transactions (transaction_type, salary_month_year, emp_id, head_id, amount, remark, authorised_by, is_bulk_entry, ref_process_date)
-                    VALUES ('DEDUCTION', ?, ?, ?, ?, ?, ?, 1, ?)
-                  `).run(wageMonth, entry.emp_id, statAdvHead.id, entry.advance_amount, remark, authorizerId, processDate || null);
-                }
-
-                if (entry.payment_mode === 'BANK') {
-                  primaryDb.prepare(`
-                    INSERT INTO bank_transfers (emp_id, amount, bank_name, account_no, ifsc_code, transfer_type, batch_id)
-                    VALUES (?, ?, ?, ?, ?, 'ADVANCE', ?)
-                  `).run(entry.emp_id, entry.advance_amount, entry.bank_name, entry.account_no, entry.ifsc_code, batchId);
-                }
-              }
-            })();
-            res.json({ status: 'success', batchId });
-          } catch (err: any) {
-            console.error("[Advance] Commit failed:", err);
-            res.status(500).json({ error: err.message });
-          
-}
 };

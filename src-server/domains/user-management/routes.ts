@@ -5,7 +5,7 @@ export const usermanagementRouter = Router();
 
 usermanagementRouter.get('/', (req: any, res) => {
     try {
-        const service = new UserManagementService(req.primaryDb);
+        const service = new UserManagementService(req.primaryDb, req.statutoryDb, req.dbState);
         const users = service.getUsers(req.user || { role: 'SUPERADMIN', username: 'system' });
         res.json({ success: true, data: users });
     } catch (e: any) {
@@ -15,7 +15,7 @@ usermanagementRouter.get('/', (req: any, res) => {
 
 usermanagementRouter.post('/', async (req: any, res) => {
     try {
-        const service = new UserManagementService(req.primaryDb);
+        const service = new UserManagementService(req.primaryDb, req.statutoryDb, req.dbState);
         const id = await service.createUser(req.body, req.user || { role: 'SUPERADMIN', username: 'system' });
         res.json({ success: true, id });
     } catch (e: any) {
@@ -25,7 +25,7 @@ usermanagementRouter.post('/', async (req: any, res) => {
 
 usermanagementRouter.put('/:id', async (req: any, res) => {
     try {
-        const service = new UserManagementService(req.primaryDb);
+        const service = new UserManagementService(req.primaryDb, req.statutoryDb, req.dbState);
         await service.updateUser(Number(req.params.id), req.body, req.user || { role: 'SUPERADMIN', username: 'system' });
         res.json({ success: true });
     } catch (e: any) {
@@ -35,7 +35,7 @@ usermanagementRouter.put('/:id', async (req: any, res) => {
 
 usermanagementRouter.delete('/:id', (req: any, res) => {
     try {
-        const service = new UserManagementService(req.primaryDb);
+        const service = new UserManagementService(req.primaryDb, req.statutoryDb, req.dbState);
         service.deleteUser(Number(req.params.id), req.user || { role: 'SUPERADMIN', username: 'system' });
         res.json({ success: true });
     } catch (e: any) {
@@ -45,7 +45,7 @@ usermanagementRouter.delete('/:id', (req: any, res) => {
 
 usermanagementRouter.get('/roles', (req: any, res) => {
     try {
-        const service = new UserManagementService(req.primaryDb);
+        const service = new UserManagementService(req.primaryDb, req.statutoryDb, req.dbState);
         const roles = service.getRoles(req.user || { role: 'SUPERADMIN', username: 'system' });
         res.json({ success: true, data: roles });
     } catch (e: any) {
@@ -55,7 +55,7 @@ usermanagementRouter.get('/roles', (req: any, res) => {
 
 usermanagementRouter.get('/roles/:id/permissions', (req: any, res) => {
     try {
-        const service = new UserManagementService(req.primaryDb);
+        const service = new UserManagementService(req.primaryDb, req.statutoryDb, req.dbState);
         const perms = service.getRolePermissions(Number(req.params.id));
         res.json({ success: true, data: perms });
     } catch (e: any) {
@@ -65,7 +65,7 @@ usermanagementRouter.get('/roles/:id/permissions', (req: any, res) => {
 
 usermanagementRouter.put('/roles/:id/permissions', (req: any, res) => {
     try {
-        const service = new UserManagementService(req.primaryDb);
+        const service = new UserManagementService(req.primaryDb, req.statutoryDb, req.dbState);
         service.updateRolePermissions(Number(req.params.id), req.body.permissions, req.user || { role: 'SUPERADMIN', username: 'system' });
         res.json({ success: true });
     } catch (e: any) {
@@ -75,7 +75,7 @@ usermanagementRouter.put('/roles/:id/permissions', (req: any, res) => {
 
 usermanagementRouter.get('/audit', (req: any, res) => {
     try {
-        const service = new UserManagementService(req.primaryDb);
+        const service = new UserManagementService(req.primaryDb, req.statutoryDb, req.dbState);
         const logs = service.getAuditLogs(req.user || { role: 'SUPERADMIN', username: 'system' });
         res.json({ success: true, data: logs });
     } catch (e: any) {

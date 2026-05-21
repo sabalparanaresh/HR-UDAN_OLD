@@ -1,4 +1,5 @@
-import { mapKeys, toSnakeCase, sanitizeData } from '../../src-server/legacyRouter.js';
+import { mapKeys, toSnakeCase } from '../utils/helpers.js';
+import { sanitizeData } from '../domains/sync-engine/helpers.js';
 import { isKConnected } from '../utils/syncCircuitBreaker.js';
 import { CommandHandler } from './types.js';
 

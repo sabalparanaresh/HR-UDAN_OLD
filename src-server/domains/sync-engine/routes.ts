@@ -37,6 +37,12 @@ syncengineRouter.get('/state', (req: Request, res: Response) => {
   res.json({ connected: row?.value === 'CONNECTED' });
 });
 
+syncengineRouter.get('/last-sync-timestamp', (req: Request, res: Response) => {
+  const primaryDb = (req as any).primaryDb;
+  const row = primaryDb.prepare("SELECT MAX(updated_at) as ts FROM sync_queue WHERE status = 'COMPLETED'").get() as any;
+  res.json({ timestamp: row?.ts || '1970-01-01T00:00:00Z' });
+});
+
 syncengineRouter.post('/trigger', async (req: Request, res: Response) => {
   const { entity_type, entity_id, operation, payload } = req.body;
   const primaryDb = (req as any).primaryDb;
