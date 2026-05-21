@@ -21,7 +21,7 @@ import {
 import { toast } from 'sonner';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 
 import { useModule } from '../../contexts/ModuleContext';
 import BulkBankUpload from '../../components/BulkBankUpload';
@@ -68,7 +68,7 @@ export default function BankMaster() {
   const fetchBanks = async (query: string = '', page: number = 1) => {
     setIsLoading(true);
     try {
-      const response = await invoke('master_crud', {
+      const response = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         table_name: 'banks',
         operation: 'list',
         module_type: currentMode,
@@ -76,7 +76,7 @@ export default function BankMaster() {
         limit: itemsPerPage,
         offset: (page - 1) * itemsPerPage,
         include_total: true
-      }) as { rows: BankRecord[]; total: number };
+      }) }) as { rows: BankRecord[]; total: number };
       
       setBanks(response.rows || []);
       setTotalRecords(response.total || 0);
@@ -101,7 +101,7 @@ export default function BankMaster() {
     try {
       toast.info("Connecting to Razorpay IFSC Gateway...");
       // 1. Fetch Bank List (Object with CODE: NAME)
-      const bankData = await invoke('get_ogd_bank_list') as Record<string, string>;
+      const bankData = await fetchApi('/api/master-data/cmd/getOgdBankList', { method: 'POST' }) as Record<string, string>;
       const bankCodes = Object.keys(bankData);
       
       // Major banks for deeper sync first, followed by others up to a reasonable limit for this turns
@@ -118,7 +118,7 @@ export default function BankMaster() {
         
         try {
           // Fetch from backend proxy
-          const branchData = await invoke('get_ogd_bank_branches', { bankTag }) as Record<string, any>;
+          const branchData = await fetchApi('/api/master-data/cmd/getOgdBankBranches', { method: 'POST', body: JSON.stringify({ bankTag }) }) as Record<string, any>;
           
           if (branchData && Object.keys(branchData).length > 0) {
             const records = Object.entries(branchData).map(([ifsc, details]) => ({
@@ -133,10 +133,10 @@ export default function BankMaster() {
             const CHUNK_SIZE = 5000;
             for (let j = 0; j < records.length; j += CHUNK_SIZE) {
               const chunk = records.slice(j, j + CHUNK_SIZE);
-              await invoke('bulk_bank_import', {
+              await fetchApi('/api/master-data/cmd/bulkBankImport', { method: 'POST', body: JSON.stringify({
                 records: chunk,
                 module_type: currentMode
-              });
+              }) });
             }
             totalImported += records.length;
           }
@@ -187,13 +187,13 @@ export default function BankMaster() {
         updated_at: new Date().toISOString()
       };
 
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         table_name: 'banks',
         operation: isEditing ? 'update' : 'create',
         data,
         id: isEditing,
         module_type: currentMode
-      });
+      }) });
       
       toast.success(isEditing ? "Bank record updated" : "Bank record added");
       fetchBanks();
@@ -227,12 +227,12 @@ export default function BankMaster() {
   const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this bank record?")) {
       try {
-        await invoke('master_crud', {
+        await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           table_name: 'banks',
           operation: 'delete',
           id,
           module_type: currentMode
-        });
+        }) });
         toast.success("Record deleted");
         fetchBanks();
       } catch (err) {

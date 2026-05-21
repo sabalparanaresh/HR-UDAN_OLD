@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Plus, Trash2, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand } from '../../../services/apiClient';
+import { invokeCommand, fetchApi } from '../../../services/apiClient';
 import { useModule } from '../../../contexts/ModuleContext';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -22,7 +22,7 @@ export default function MealPeriodSettingsTab() {
     async function loadData() {
       setIsLoading(true);
       try {
-        const data: any = await invokeCommand('get_canteen_master_data', { moduleType: currentMode });
+        const data: any = await fetchApi('/api/canteen/master', { headers: { 'x-module-type': currentMode } });
         if (data.windows) setWindows(data.windows);
       } catch (err) {
         toast.error('Failed to load meal periods');
@@ -40,12 +40,12 @@ export default function MealPeriodSettingsTab() {
   const handleRemoveWindow = async (index: number, id?: number) => {
     if (id) {
       try {
-        await invokeCommand('master_crud', {
+        await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'canteen_time_windows',
           operation: 'delete',
           id,
           moduleType: currentMode
-        });
+        }) });
       } catch (error) {
         toast.error('Failed to delete period');
         return;
@@ -60,13 +60,13 @@ export default function MealPeriodSettingsTab() {
     setIsSaving(true);
     try {
       for (const window of windows) {
-        await invokeCommand('master_crud', {
+        await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'canteen_time_windows',
           operation: window.id ? 'update' : 'create',
           id: window.id,
           data: window,
           moduleType: currentMode
-        });
+        }) });
       }
       toast.success('Meal periods saved successfully');
     } catch (error) {

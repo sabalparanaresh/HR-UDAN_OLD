@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   RefreshCw, Download, CheckCircle2, AlertCircle, Loader2, 
   Calendar, User, Search, Filter, Plus, 
@@ -57,16 +57,16 @@ export default function LeaveCreditEntry() {
 
   const fetchMasterData = async () => {
     try {
-      const data = await invoke<any>('get_master_data', { moduleType: currentMode });
+      const data = await fetchApi<any>('/api/master-data/get-master-data', { method: 'POST', body: JSON.stringify({ moduleType: currentMode }) });
       setDepartments(Array.isArray(data.departments) ? data.departments : []);
       setLocations(Array.isArray(data.locations) ? data.locations : []);
       setCategories(Array.isArray(data.categories) ? data.categories : []);
       
-      const configs = await invoke<LeaveConfig[]>('master_crud', { 
+      const configs = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ 
         tableName: 'leave_configurations', 
         operation: 'list', 
         moduleType: currentMode 
-      });
+      }) });
       setLeaveConfigs(configs.filter(c => c.status === 1));
     } catch (err) {
       toast.error("Failed to load master data");
@@ -80,14 +80,14 @@ export default function LeaveCreditEntry() {
     }
     setIsLoading(true);
     try {
-      const data = await invoke<LeaveCreditPreview[]>('get_leave_credit_preview', {
+      const data = await fetchApi('/api/employee/cmd/getLeaveCreditPreview', { method: 'POST', body: JSON.stringify({
         leaveConfigId: parseInt(leaveConfigId),
         deptId: deptId ? parseInt(deptId) : null,
         locationId: locationId ? parseInt(locationId) : null,
         categoryId: categoryId ? parseInt(categoryId) : null,
         effectiveDate,
         moduleType: currentMode
-      });
+      }) });
       setPreviews(data);
     } catch (err) {
       toast.error("Failed to fetch preview");
@@ -103,7 +103,7 @@ export default function LeaveCreditEntry() {
     }
     setIsPosting(true);
     try {
-      await invoke('post_leave_credits', {
+      await fetchApi('/api/employee/cmd/postLeaveCredits', { method: 'POST', body: JSON.stringify({
         leaveConfigId: parseInt(leaveConfigId),
         effectiveDate,
         credits: previews.map(p => ({
@@ -111,7 +111,7 @@ export default function LeaveCreditEntry() {
           amount: p.calculated_credit
         })),
         moduleType: currentMode
-      });
+      })});
       toast.success("Leave credits posted successfully");
       setPreviews([]);
     } catch (err) {

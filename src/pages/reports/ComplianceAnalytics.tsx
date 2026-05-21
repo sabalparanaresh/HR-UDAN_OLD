@@ -3,7 +3,7 @@ import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Users, ShieldAlert, FileCheck, Save, X, Activity, AlertTriangle, LayoutDashboard, Database, TrendingUp, AlertCircle, FileText } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import ReactGridLayout, { Responsive as ResponsiveGridLayout, Layout } from 'react-grid-layout';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
@@ -60,7 +60,7 @@ function ComplianceAnalytics({ currentUser }: { currentUser: any }) {
     setLoading(true);
     activeRequest.current = true;
     try {
-      const resp = await invoke('get_compliance_analytics', { moduleType: currentMode, force_refresh: force });
+      const resp = await fetchApi('/api/system/cmd/getComplianceAnalytics', { method: 'POST', body: JSON.stringify({ moduleType: currentMode, force_refresh: force }) });
       if (!isCancelled.value) setData(resp);
     } catch (err) {
       if (!isCancelled.value) console.error(err);

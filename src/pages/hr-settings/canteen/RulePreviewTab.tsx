@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Loader2, Play } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand } from '../../../services/apiClient';
+import { invokeCommand, fetchApi } from '../../../services/apiClient';
 import { useModule } from '../../../contexts/ModuleContext';
 import { motion } from 'motion/react';
 import { Pagination } from '../../../components/common/Pagination';
@@ -18,7 +18,7 @@ export default function RulePreviewTab() {
   useEffect(() => {
     async function loadData() {
       try {
-        const data: any = await invokeCommand('get_canteen_master_data', { moduleType: currentMode });
+        const data: any = await fetchApi('/api/canteen/master', { headers: { 'x-module-type': currentMode } });
         if (data.employees) setEmployees(data.employees);
       } catch (err) {
         toast.error('Failed to load employees for simulator');
@@ -30,9 +30,10 @@ export default function RulePreviewTab() {
   const handleRunSimulation = async () => {
     setIsSimulating(true);
     try {
-      const data: any = await invokeCommand('calculate_canteen_deductions', {
-        month: selectedMonth,
-        moduleType: currentMode
+      const data: any = await fetchApi('/api/canteen/calculate-deductions', {
+        method: 'POST',
+        headers: { 'x-module-type': currentMode },
+        body: JSON.stringify({ month: selectedMonth })
       });
       // Map results to include names
       const enriched = data.results.map((r: any) => ({

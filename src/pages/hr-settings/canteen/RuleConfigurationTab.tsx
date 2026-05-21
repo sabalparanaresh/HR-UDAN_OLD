@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Plus, Edit, Trash2, XCircle, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand } from '../../../services/apiClient';
+import { invokeCommand, fetchApi } from '../../../services/apiClient';
 import { useModule } from '../../../contexts/ModuleContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Pagination } from '../../../components/common/Pagination';
@@ -38,7 +38,7 @@ export default function RuleConfigurationTab() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const data: any = await invokeCommand('get_canteen_master_data', { moduleType: currentMode });
+      const data: any = await fetchApi('/api/canteen/master', { headers: { 'x-module-type': currentMode } });
       if (data.rules) setRules(data.rules);
       if (data.categories) setCategories(data.categories);
       if (data.classes) setClasses(data.classes);
@@ -57,13 +57,13 @@ export default function RuleConfigurationTab() {
   const handleSaveRule = async () => {
     setIsSaving(true);
     try {
-      await invokeCommand('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'canteen_rules',
         operation: ruleForm.id ? 'update' : 'create',
         id: ruleForm.id,
         data: ruleForm,
         moduleType: currentMode
-      });
+      }) });
       toast.success('Rule saved successfully');
       setIsModalOpen(false);
       loadData();
@@ -77,12 +77,12 @@ export default function RuleConfigurationTab() {
   const handleDeleteRule = async (id: number) => {
     if (!confirm('Are you sure you want to delete this rule?')) return;
     try {
-      await invokeCommand('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'canteen_rules',
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
       toast.success('Rule deleted');
       loadData();
     } catch (error) {

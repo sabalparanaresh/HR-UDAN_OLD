@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 const ReactECharts = React.lazy(() => import('echarts-for-react'));
 import { ShieldCheck, ShieldAlert, FileText, Users, TrendingUp, RefreshCw } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { transformChartData } from '../../utils';
 
 export default function StatutoryDashboard() {
@@ -13,10 +13,10 @@ export default function StatutoryDashboard() {
   const fetchData = async (force: boolean = false) => {
     setIsLoading(true);
     try {
-      const data = await invoke('get_dashboard_data', { 
+      const data = await fetchApi('/api/system/cmd/getDashboardData', { method: 'POST', body: JSON.stringify({ 
         moduleType: currentMode,
         force_refresh: force 
-      });
+      }) });
       setDashboardData(data);
     } catch (err) {
       console.error("Failed to fetch dashboard data:", err);

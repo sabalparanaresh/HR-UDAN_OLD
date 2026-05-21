@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FileText, Download, ShieldAlert, MonitorPlay, Lock } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { toast } from 'sonner';
 import CachedStatutoryWarningBanner from '../../components/layout/CachedStatutoryWarningBanner';
 
@@ -31,7 +31,7 @@ function SalaryReports({ currentUser }: { currentUser: any }) {
         password: usePassword && password ? password : undefined
       };
 
-      const res = await invoke('generate_salary_register_excel', req) as any;
+      const res = await fetchApi('/api/system/cmd/generateSalaryRegisterExcel', { method: 'POST', body: JSON.stringify(req) }) as any;
 
       if (res && res.status === 'success' && res.base64) {
         // Decode base64 and trigger download

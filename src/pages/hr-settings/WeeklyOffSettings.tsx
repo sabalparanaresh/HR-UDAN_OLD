@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { Clock, Calendar, Plus, Trash2, Edit2, Save, X, AlertCircle } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -55,11 +55,11 @@ export default function WeeklyOffSettings() {
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
-      const data = await invoke<WeeklyOffSetting[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'weekly_off',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       setSettings(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error('Could not load weekly off history');
@@ -70,7 +70,7 @@ export default function WeeklyOffSettings() {
 
   const onSubmit = async (data: WeeklyOffFormValues) => {
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'weekly_off',
         operation: editingId ? 'update' : 'create',
         id: editingId,
@@ -80,7 +80,7 @@ export default function WeeklyOffSettings() {
           allocation_type: data.allocation_type || 'KP'
         },
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(editingId ? 'Setting updated successfully' : 'Weekly off added successfully');
       reset();
@@ -101,12 +101,12 @@ export default function WeeklyOffSettings() {
 
   const handleDelete = async (id: number) => {
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'weekly_off',
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
       toast.success('Setting deleted');
       setDeleteConfirmId(null);
       fetchSettings();

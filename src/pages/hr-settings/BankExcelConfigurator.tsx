@@ -29,7 +29,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -277,7 +277,7 @@ export default function BankExcelConfigurator({
 
   const fetchConfigs = async () => {
     try {
-      const data = await invoke('get_bank_excel_configs', { module_type: currentMode }) as BankConfig[];
+      const data = await fetchApi<BankConfig[]>('/api/banking/configs', { headers: { 'x-module-type': currentMode } });
       setConfigs(data);
     } catch (err) {
       console.error("Failed to fetch configs:", err);
@@ -328,11 +328,14 @@ export default function BankExcelConfigurator({
 
     setIsLoading(true);
     try {
-      await invoke('save_bank_excel_config', {
-        id: selectedConfigId,
-        bank_name: bankName,
-        columns,
-        module_type: currentMode
+      await fetchApi('/api/banking/configs', {
+        method: 'POST',
+        headers: { 'x-module-type': currentMode },
+        body: JSON.stringify({
+          id: selectedConfigId,
+          bank_name: bankName,
+          columns
+        })
       });
       toast.success("Configuration saved successfully");
       fetchConfigs();

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Plus, 
   Trash2, 
@@ -78,12 +78,12 @@ function RokdaManagement({ currentUser }: RokdaManagementProps) {
   const fetchMasterData = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<any>('get_master_data', { moduleType: currentMode });
+      const data = await fetchApi<any>('/api/master-data/get-master-data', { method: 'POST', body: JSON.stringify({ moduleType: currentMode }) });
       setMasterData(data);
       
       // Initialize first row with token code
       const prefix = format(new Date(), 'MMyy');
-      const tokenData = await invoke<{ nextToken: string }>('get_next_rokda_token', { prefix, moduleType: currentMode });
+      const tokenData = await fetchApi('/api/transactions/rokda/next-token', { method: 'POST', body: JSON.stringify({ prefix, moduleType: currentMode }) });
       const initialToken = tokenData.nextToken;
       lastTokenRef.current = parseInt(initialToken.substring(4));
       
@@ -168,7 +168,7 @@ function RokdaManagement({ currentUser }: RokdaManagementProps) {
 
     setIsSaving(true);
     try {
-      await invoke('save_rokda_voucher', {
+      await fetchApi('/api/transactions/rokda/voucher', { method: 'POST', body: JSON.stringify({
         voucher: {
           voucher_date: voucherDate,
           department_id: parseInt(autoFields.departmentId),
@@ -180,12 +180,12 @@ function RokdaManagement({ currentUser }: RokdaManagementProps) {
         },
         entries: activeEntries.map(({ id, ...rest }) => rest),
         moduleType: currentMode
-      });
+      })});
       toast.success("Cash Voucher Generated Successfully");
       
       // Refresh token for next batch
       const prefix = format(new Date(), 'MMyy');
-      const tokenData = await invoke<{ nextToken: string }>('get_next_rokda_token', { prefix, moduleType: currentMode });
+      const tokenData = await fetchApi('/api/transactions/rokda/next-token', { method: 'POST', body: JSON.stringify({ prefix, moduleType: currentMode }) });
       lastTokenRef.current = parseInt(tokenData.nextToken.substring(4));
       
       setEntries([

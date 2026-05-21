@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { fetchApi } from '../../services/apiClient';
 
 interface PasswordResetFormProps {
   onBackToLogin: () => void;
@@ -21,11 +21,14 @@ export function PasswordResetForm({ onBackToLogin }: PasswordResetFormProps) {
     e.preventDefault();
     setAuthError('');
     try {
-      const data = await invoke<any>('verify_identity', { 
-        mobile: resetMobile,
-        birth_date: resetDOB,
-        answer_1: resetA1,
-        answer_2: resetA2
+      const data = await fetchApi<any>('/api/auth/verify-identity', { 
+        method: 'POST',
+        body: JSON.stringify({
+          mobile: resetMobile,
+          birth_date: resetDOB,
+          answer_1: resetA1,
+          answer_2: resetA2
+        })
       });
       setResetToken(data.token);
       setResetStep(3);
@@ -38,9 +41,12 @@ export function PasswordResetForm({ onBackToLogin }: PasswordResetFormProps) {
     e.preventDefault();
     setAuthError('');
     try {
-      await invoke('reset_password_with_token', { 
-        token: resetToken, 
-        new_password: resetNewPassword 
+      await fetchApi('/api/auth/reset-password', { 
+        method: 'POST',
+        body: JSON.stringify({
+          token: resetToken, 
+          new_password: resetNewPassword 
+        })
       });
       setResetStep(1);
       setAuthError('Password reset successful. Please login.');

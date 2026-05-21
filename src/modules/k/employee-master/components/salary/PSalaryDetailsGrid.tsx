@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useForm, FormProvider, useFieldArray } from 'react-hook-form';
-import { invokeCommand as invoke } from '../../../../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../../../../services/apiClient';
 import { toast } from 'sonner';
 import { Loader2, Plus, Save, History, Edit2 } from 'lucide-react';
 import { PSalaryDetailsDTO } from '../../../../../types/pSalaryDetails';
@@ -32,15 +32,15 @@ export default function PSalaryDetailsGrid({ employeeId }: { employeeId: number 
 
   const checkConnection = async () => {
      try {
-         const bridgeState = await invoke<any>('get_connection_status');
-         setIsConnected(bridgeState.status === 'CONNECTED');
+         const bridgeState = await fetchApi<string>('/api/system/connection-status');
+         setIsConnected(bridgeState === 'CONNECTED');
      } catch(e) {}
   };
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const res = await invoke<any>('get_p_salary_details_for_k', { employeeId });
+      const res = await fetchApi('/api/system/cmd/getPSalaryDetailsForK', { method: 'POST', body: JSON.stringify({ employeeId }) });
       setRecords(res.records || []);
       setSalaryHeads(res.salaryHeads || []);
       
@@ -64,7 +64,7 @@ export default function PSalaryDetailsGrid({ employeeId }: { employeeId: number 
     try {
       setSaving(true);
       const dto = pSalaryFieldAdapter.toDTO(employeeId, data);
-      await invoke('save_p_salary_details_for_k', { employeeId, data: dto });
+      await fetchApi('/api/system/cmd/savePSalaryDetailsForK', { method: 'POST', body: JSON.stringify({ employeeId, data: dto }) });
       toast.success('P Salary Details saved to Statutory Bridge');
       setIsEditing(false);
       loadData();

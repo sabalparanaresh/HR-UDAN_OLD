@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Plus, Search, CheckCircle2, XCircle, Calculator, Info, User, 
   Calendar, DollarSign, FileText, Clock, ShieldCheck, AlertCircle, Edit, Play
@@ -162,7 +162,7 @@ export default function LoanApplication() {
 
   const fetchApplications = async () => {
     try {
-      const data = await invoke<any[]>('get_loan_applications', { moduleType: currentMode });
+      const data = await fetchApi<any[]>('/api/loans/applications', { headers: { 'x-module-type': currentMode } });
       setApplications(data || []);
     } catch (e) {
       toast.error('Failed to fetch applications');
@@ -170,26 +170,23 @@ export default function LoanApplication() {
   };
 
   const fetchEmployees = async () => {
-    const data = await invoke<Employee[]>('master_crud', { tableName: 'employees', operation: 'list', moduleType: currentMode });
+    const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'employees', operation: 'list', moduleType: currentMode }) });
     setEmployees(data || []);
   };
 
   const fetchLoanTypes = async () => {
-    const data = await invoke<any[]>('master_crud', { tableName: 'loan_types', operation: 'list', moduleType: currentMode });
+    const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'loan_types', operation: 'list', moduleType: currentMode }) });
     setLoanTypes((data || []).filter((d: any) => d.status === 1));
   };
   
   const checkEligibility = async () => {
-    const res = await invoke<any>('calculate_loan_eligibility', { 
-       empId: Number(formData.emp_id), 
-       loanTypeId: Number(formData.loan_type_id),
-       applicationDate: formData.application_date
-    });
+    const res = await fetchApi<any>(`/api/loans/eligibility?empId=${Number(formData.emp_id)}&loanTypeId=${Number(formData.loan_type_id)}`);
     setEligibility(res);
   };
   
   const checkActiveLoans = async () => {
-    const res = await invoke<any>('check_active_loans', { empId: Number(formData.emp_id), guarantorId: formData.guarantor_id ? Number(formData.guarantor_id) : -1 });
+    const guarantorQuery = formData.guarantor_id ? `&guarantorId=${formData.guarantor_id}` : '';
+    const res = await fetchApi<any>(`/api/loans/active?empId=${Number(formData.emp_id)}${guarantorQuery}`);
     setActiveLoanWarning({ has: res.hasActiveLoan, details: res.activeLoans || [] });
   };
 
@@ -229,7 +226,11 @@ export default function LoanApplication() {
         application_date: formData.application_date,
       };
 
-      await invoke('create_loan_application', payload);
+      await fetchApi('/api/loans/applications', {
+        method: 'POST',
+        headers: { 'x-module-type': currentMode },
+        body: JSON.stringify(payload)
+      });
 
       const emp = employees.find(e => e.id === payload.emp_id);
       const guar = employees.find(e => e.id === Number(formData.guarantor_id));
@@ -316,14 +317,11 @@ export default function LoanApplication() {
      });
      setApproverModal({isOpen: true, app});
   
-     const res = await invoke<any>('calculate_loan_eligibility', { 
-       empId: Number(app.emp_id), 
-       loanTypeId: Number(app.loan_type_id),
-       applicationDate: app.application_date || new Date().toISOString().split('T')[0]
-     });
+     const res = await fetchApi<any>(`/api/loans/eligibility?empId=${Number(app.emp_id)}&loanTypeId=${Number(app.loan_type_id)}`);
      setApproverEligibility(res);
   
-     const res2 = await invoke<any>('check_active_loans', { empId: Number(app.emp_id), guarantorId: app.guarantor_id ? Number(app.guarantor_id) : -1 });
+     const guarantorQuery = app.guarantor_id ? `&guarantorId=${app.guarantor_id}` : '';
+     const res2 = await fetchApi<any>(`/api/loans/active?empId=${Number(app.emp_id)}${guarantorQuery}`);
      setApproverActiveWarning({ has: res2.hasActiveLoan, details: res2.activeLoans || [] });
   };
 
@@ -351,16 +349,23 @@ export default function LoanApplication() {
            finalAmount += (finalAmount * (rate / 100) * tenureInYears);
         }
         const emiAmount = Math.ceil(finalAmount / Number(approverData.no_of_emi));
-        await invoke('override_and_approve_loan', {
-           loanId: appObj.id,
-           loan_amount: Number(approverData.loan_amount),
-           no_of_emi: Number(approverData.no_of_emi),
-           emi_amount: emiAmount,
-           start_month_year: approverData.start_month_year,
-           payment_mode: approverData.payment_mode
+        await fetchApi(`/api/loans/applications/${appObj.id}/override`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            loan_amount: Number(approverData.loan_amount),
+            no_of_emi: Number(approverData.no_of_emi),
+            emi_amount: emiAmount,
+            start_month_year: approverData.start_month_year,
+            payment_mode: approverData.payment_mode
+          })
         });
-        await invoke('update_loan_status', { loanId: appObj.id, status: 'APPROVED' });
-        await invoke('generate_amortisation_schedule', { loanId: appObj.id });
+        await fetchApi(`/api/loans/applications/${appObj.id}/status`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: 'APPROVED' })
+        });
+        await fetchApi(`/api/loans/applications/${appObj.id}/amortisation/generate`, {
+          method: 'POST'
+        });
         toast.success('Loan Approved and Schedule Generated');
         setApproverModal({isOpen: false, app: null});
         fetchApplications();
@@ -377,7 +382,10 @@ export default function LoanApplication() {
       return;
     }
     try {
-      await invoke('update_loan_status', { loanId: rejectModal.appId, status: 'REJECTED', remark: rejectRemark });
+      await fetchApi(`/api/loans/applications/${rejectModal.appId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'REJECTED', remark: rejectRemark })
+      });
       toast.success('Loan rejected successfully');
       setRejectModal({ isOpen: false, appId: null });
       setRejectRemark('');
@@ -389,10 +397,15 @@ export default function LoanApplication() {
 
   const updateStatus = async (id: number, status: string) => {
     try {
-      await invoke('update_loan_status', { loanId: id, status });
+      await fetchApi(`/api/loans/applications/${id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status })
+      });
       if (status === 'APPROVED') {
         // Generate Schedule
-        await invoke('generate_amortisation_schedule', { loanId: id });
+        await fetchApi(`/api/loans/applications/${id}/amortisation/generate`, {
+          method: 'POST'
+        });
         toast.success('Loan Approved and Schedule Generated');
       } else {
         toast.success(`Loan marked as ${status}`);
@@ -409,20 +422,22 @@ export default function LoanApplication() {
   };
 
   const loadSchedule = async (id: number) => {
-    const data = await invoke<any[]>('get_loan_amortization', { loanId: id });
+    const data = await fetchApi<any[]>(`/api/loans/applications/${id}/amortisation`);
     setSchedule(data || []);
     fetchApplications();
   };
 
   const handleEmiAction = async (emi: any, action: string, amount: string = '', modalRemarks: string = '', authorisedBy: string = '') => {
     try {
-      await invoke('update_emi_dynamic', {
-        amortizationId: emi.id,
-        action,
-        newAmount: amount ? Number(amount) : 0,
-        paymentMode: prepayData.mode,
-        remarks: modalRemarks || prepayData.remarks,
-        authorisedBy: authorisedBy
+      await fetchApi(`/api/loans/amortisation/${emi.id}/dynamic-update`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          action,
+          newAmount: amount ? Number(amount) : 0,
+          paymentMode: prepayData.mode,
+          remarks: modalRemarks || prepayData.remarks,
+          authorisedBy: authorisedBy
+        })
       });
       toast.success('EMI Updated');
       loadSchedule(amortModal.app.id);

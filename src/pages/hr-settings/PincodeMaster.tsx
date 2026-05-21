@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePermission } from '../../hooks/useRBAC';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Upload, 
   Database, 
@@ -82,12 +82,12 @@ export default function PincodeMaster() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<{ records: PincodeRecord[], total: number }>('get_pincode_records', {
+      const data = await fetchApi('/api/master-data/cmd/getPincodeRecords', { method: 'POST', body: JSON.stringify({
         page: currentPage,
         limit: itemsPerPage,
         search: searchQuery,
         moduleType: currentMode
-      });
+      }) });
       setRecords(data.records || []);
       setTotalRecords(data.total || 0);
     } catch (error) {
@@ -111,13 +111,13 @@ export default function PincodeMaster() {
     }
 
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'pincode_master',
         operation: isEditing ? 'update' : 'create',
         id: isEditing,
         data: formData,
         moduleType: currentMode
-      });
+      }) });
       toast.success(isEditing ? "Record updated" : "Record added");
       resetForm();
       fetchData();
@@ -151,12 +151,12 @@ export default function PincodeMaster() {
     if (!confirm("Are you sure you want to delete this record?")) return;
 
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'pincode_master',
         operation: 'delete',
         id: id,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Record deleted");
       fetchData();
     } catch (error) {
@@ -219,12 +219,12 @@ export default function PincodeMaster() {
           }).filter(r => r.pincode && r.pincode.length === 6 && r.statename && r.districtname);
 
           if (recordsToImport.length > 0) {
-            await invoke('master_crud', {
+            await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
               tableName: 'pincode_master',
               operation: 'bulk_create',
               data: { records: recordsToImport },
               moduleType: currentMode
-            });
+            }) });
           }
           
           setImportProgress({ current: Math.min(i + chunkSize, jsonData.length), total: jsonData.length });
@@ -267,7 +267,7 @@ export default function PincodeMaster() {
         setSyncStatus(`Streaming Records... Offset: ${offset}`);
         
         // Use backend command instead of direct fetch to handle secrets securely
-        const data = await invoke('get_ogd_records', { offset, limit }) as any;
+        const data = await fetchApi('/api/master-data/cmd/getOgdRecords', { method: 'POST', body: JSON.stringify({ offset, limit }) }) as any;
         
         const batch = data.records || [];
         const totalCount = parseInt(data.total || "0");
@@ -289,10 +289,10 @@ export default function PincodeMaster() {
         }));
 
         // Upsert to Local DB
-        await invoke('bulk_pincode_upsert', {
+        await fetchApi('/api/master-data/cmd/bulkPincodeUpsert', { method: 'POST', body: JSON.stringify({
           records: mappedRecords,
           moduleType: currentMode
-        });
+        }) });
 
         offset += limit;
 

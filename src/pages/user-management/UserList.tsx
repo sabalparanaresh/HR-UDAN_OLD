@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { Plus, Search, Edit2, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { fetchApi } from '../../services/apiClient';
 import { usePermission } from '../../hooks/useRBAC';
 import { useRoles } from '../../hooks/useRoles';
 
@@ -22,8 +22,8 @@ export default React.memo(function UserList() {
     const { data: usersData, isLoading } = useQuery({
         queryKey: ['usersList', currentMode],
         queryFn: async () => {
-            const res = await invoke<any>('user_crud', { operation: 'list', moduleType: currentMode });
-            return { success: true, data: res };
+            const res = await fetchApi<{ success: boolean; data: any[] }>('/api/users');
+            return res;
         },
         staleTime: 1000 * 60 * 5, // 5 minutes
         gcTime: 1000 * 60 * 30, // 30 minutes
@@ -33,7 +33,11 @@ export default React.memo(function UserList() {
 
     const saveMutation = useMutation({
         mutationFn: async (data: any) => {
-             await invoke('user_crud', { operation: data.id ? 'update' : 'create', id: data.id, data, moduleType: currentMode });
+            if (data.id) {
+                await fetchApi(`/api/users/${data.id}`, { method: 'PUT', body: JSON.stringify(data) });
+            } else {
+                await fetchApi('/api/users', { method: 'POST', body: JSON.stringify(data) });
+            }
         },
         onSuccess: () => {
             toast.success('User saved successfully');
@@ -45,7 +49,7 @@ export default React.memo(function UserList() {
 
     const deleteMutation = useMutation({
         mutationFn: async (id: number) => {
-             await invoke('user_crud', { operation: 'delete', id, moduleType: currentMode });
+            await fetchApi(`/api/users/${id}`, { method: 'DELETE' });
         },
         onSuccess: () => {
             toast.success('User deleted successfully');

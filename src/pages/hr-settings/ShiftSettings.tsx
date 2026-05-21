@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Clock, 
   Plus, 
@@ -20,7 +20,6 @@ import {
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from '../../utils/xlsx';
-import { parseExcelTime } from '../../utils/excel/parseExcelTime';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -92,11 +91,11 @@ export default function ShiftSettings() {
   const fetchShifts = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<Shift[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'shifts',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       setShifts(Array.isArray(data) ? data.map(item => ({
         ...item,
         is24HourCycle: !!item.is24HourCycle,
@@ -146,13 +145,13 @@ export default function ShiftSettings() {
 
   const processSubmit = async (dataToSave: any) => {
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'shifts',
         operation: isEditing ? 'update' : 'create',
         id: isEditing,
         data: dataToSave,
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(isEditing ? "Shift updated" : "Shift created");
       setIsFormOpen(false);
@@ -179,7 +178,7 @@ export default function ShiftSettings() {
     try {
       if (isEditing) {
         // Only check usage count on edit
-        const respData = await invoke<any>('get_master_usage', { table: 'shifts', id: isEditing, moduleType: currentMode });
+        const respData = await fetchApi('/api/system/cmd/getMasterUsage', { method: 'POST', body: JSON.stringify({ table: 'shifts', id: isEditing, moduleType: currentMode }) });
         
         if (respData && respData.usageCount > 0) {
            setWarningModalProps({
@@ -265,14 +264,32 @@ export default function ShiftSettings() {
         const typeIndex = headersRow.indexOf('type');
         const statusIndex = headersRow.indexOf('status');
 
+        const parseTimeValue = (val: any) => {
+          if (!val && val !== 0) return null;
+          if (typeof val === 'number') {
+            const totalMinutes = Math.round(val * 24 * 60);
+            return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 };
+          }
+          const s = String(val).trim();
+          if (!s) return null;
+          const [h, m] = s.split(':').map(n => parseInt(n) || 0);
+          return { hours: h || 0, minutes: m || 0 };
+        };
+
         const shiftsData = rows.slice(1).map(row => {
           const name = row[0];
           if (!name) return null;
           const description = row[1] || '';
           const is24HourCycle = row[2] == '1' || String(row[2]).toLowerCase() === 'true';
 
-          const startTime = parseExcelTime(row[3]) || '08:00';
-          const endTime = parseExcelTime(row[4]) || '20:00';
+          const formatTimeStr = (val: any, defaultVal: string) => {
+            const t = parseTimeValue(val);
+            if (!t) return defaultVal;
+            return `${String(t.hours).padStart(2, '0')}:${String(t.minutes).padStart(2, '0')}`;
+          };
+
+          const startTime = formatTimeStr(row[3], '08:00');
+          const endTime = formatTimeStr(row[4], '20:00');
           const totalWorkingHours = parseFloat(row[5]) || 12.0;
           const gracePeriodMins = parseInt(row[6]) || 15;
           const rawAlloc = String(typeIndex !== -1 ? row[typeIndex] : '').toUpperCase().trim();
@@ -286,19 +303,17 @@ export default function ShiftSettings() {
           const rules: AttendanceRule[] = [];
           for (let i = 0; i < 4; i++) {
             const baseIdx = 7 + (i * 3);
-            const fromTimeStr = parseExcelTime(row[baseIdx]);
-            const toTimeStr = parseExcelTime(row[baseIdx + 1]);
+            const from = parseTimeValue(row[baseIdx]);
+            const to = parseTimeValue(row[baseIdx + 1]);
             const val = parseFloat(row[baseIdx + 2]);
 
-            if (fromTimeStr && toTimeStr) {
-              const [fromH, fromM] = fromTimeStr.split(':').map(Number);
-              const [toH, toM] = toTimeStr.split(':').map(Number);
+            if (from && to) {
               rules.push({
                 id: crypto.randomUUID(),
-                fromHours: fromH,
-                fromMinutes: fromM,
-                toHours: toH,
-                toMinutes: toM,
+                fromHours: from.hours,
+                fromMinutes: from.minutes,
+                toHours: to.hours,
+                toMinutes: to.minutes,
                 attendanceValue: isNaN(val) ? 0 : val
               });
             }
@@ -328,12 +343,12 @@ export default function ShiftSettings() {
         
         for (let i = 0; i < total; i += CHUNK_SIZE) {
           const chunk = shiftsData.slice(i, i + CHUNK_SIZE);
-          await invoke('master_crud', {
+          await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: 'shifts',
             operation: 'bulk_create',
             data: chunk,
             moduleType: currentMode
-          });
+          }) });
         }
         
         toast.success(`Bulk upload successful (${shiftsData.length} records processed)`);
@@ -706,7 +721,7 @@ export default function ShiftSettings() {
                     onClick={async (e) => {
                       e.stopPropagation();
                       try {
-                        await invoke('master_crud', {
+                        await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
                           tableName: 'shifts',
                           operation: 'update',
                           id: shift.id,
@@ -717,7 +732,7 @@ export default function ShiftSettings() {
                             is24HourCycle: shift.is24HourCycle ? 1 : 0
                           },
                           moduleType: currentMode
-                        });
+                        }) });
                         toast.success(`Shift marked as ${shift.status === 1 ? 'Inactive' : 'Active'}`);
                         fetchShifts();
                       } catch (err) {

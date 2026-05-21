@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { fetchApi } from '../../services/apiClient';
 import { format } from 'date-fns';
 import { AlertTriangle, Info, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
@@ -39,7 +39,13 @@ export default function PayrollExceptions() {
   const fetchExceptions = async () => {
     setLoading(true);
     try {
-      const data = await invoke<any[]>('get_payroll_exceptions', { month: searchMonth });
+      const data = await fetchApi<any[]>('/api/payroll/get-payroll-exceptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ month: searchMonth })
+      });
       setExceptions(data || []);
     } catch (e: any) {
       toast.error('Failed to fetch exceptions: ' + e.message);

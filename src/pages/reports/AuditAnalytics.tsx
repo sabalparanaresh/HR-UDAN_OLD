@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Save, LayoutDashboard, ShieldCheck, PieChart, Activity, AlertCircle, X } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
@@ -58,7 +58,7 @@ export default function AuditAnalytics({ currentUser, onRedirect }: { currentUse
   const fetchDashboard = async (force: boolean = false) => {
     setLoading(true);
     try {
-      const resp = await invoke('get_audit_analytics', { moduleType: currentMode, force_refresh: force });
+      const resp = await fetchApi('/api/system/cmd/getAuditAnalytics', { method: 'POST', body: JSON.stringify({ moduleType: currentMode, force_refresh: force }) });
       setData(resp);
     } catch (err) {
       console.error(err);

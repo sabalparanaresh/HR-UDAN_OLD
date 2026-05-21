@@ -11,7 +11,7 @@ import {
 import { toast } from 'sonner';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { fetchApi } from '../../services/apiClient';
 import { User } from '../../types';
 
 function cn(...inputs: ClassValue[]) {
@@ -38,9 +38,9 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
   const fetchConnectionStatus = async () => {
     setIsLoading(true);
     try {
-      const status = await invoke<'CONNECTED' | 'DISCONNECTED'>('get_connection_status');
+      const status = await fetchApi<'CONNECTED' | 'DISCONNECTED'>('/api/system/connection-status');
       setConnectionStatus(status);
-      const logs = await invoke<any[]>('get_reconnect_audit_logs');
+      const logs = await fetchApi<any[]>('/api/system/reconnect-audit-logs');
       setAuditLogs(logs || []);
     } catch (err) {
       console.error("Failed to fetch connection status", err);
@@ -52,9 +52,9 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
   const handleDisconnect = async () => {
     setIsToggling(true);
     try {
-      await invoke('update_connection_status', { status: 'DISCONNECTED' });
+      await fetchApi('/api/system/connection-status', { method: 'POST', body: JSON.stringify({ status: 'DISCONNECTED' }) });
       setConnectionStatus('DISCONNECTED');
-      const logs = await invoke<any[]>('get_reconnect_audit_logs');
+      const logs = await fetchApi<any[]>('/api/system/reconnect-audit-logs');
       setAuditLogs(logs || []);
       toast.success(`System ISOLATED`, {
         description: 'Module P is now acting via Isolation Circuit Breaker.',
@@ -70,7 +70,7 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
   const initiateReconnect = async () => {
     setIsToggling(true);
     try {
-      const report = await invoke<any>('reconcile_k_p');
+      const report = await fetchApi<any>('/api/system/reconcile-kp');
       setReconcileData(report);
       setReconcileModalOpen(true);
     } catch (e: any) {
@@ -83,9 +83,9 @@ export default function SystemConnection({ currentUser }: SystemConnectionProps)
   const finalizeReconnect = async () => {
     setIsToggling(true);
     try {
-      await invoke('resolve_reconnect', { resolution });
+      await fetchApi('/api/system/resolve-reconnect', { method: 'POST', body: JSON.stringify({ resolution }) });
       setConnectionStatus('CONNECTED');
-      const logs = await invoke<any[]>('get_reconnect_audit_logs');
+      const logs = await fetchApi<any[]>('/api/system/reconnect-audit-logs');
       setAuditLogs(logs || []);
       toast.success('Sync Engine Reconnected', {
         className: 'bg-green-100 border-green-500 text-green-800'

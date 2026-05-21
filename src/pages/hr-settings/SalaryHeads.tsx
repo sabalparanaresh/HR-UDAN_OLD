@@ -13,7 +13,7 @@ import * as XLSX from '../../utils/xlsx';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 
 function cn(...inputs: ClassValue[]) {
@@ -70,12 +70,12 @@ export default function SalaryHeads() {
     try {
       const filters: any = { type: activeTab };
       
-      const data = await invoke<SalaryHead[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'salary_heads',
         operation: 'list',
         moduleType: currentMode,
         filters: filters
-      });
+      }) });
       
       // Ensure type is populated for UI consistency
       const mappedData = data.map(h => ({
@@ -106,13 +106,13 @@ export default function SalaryHeads() {
       
       // 1. Primary Operation (Current Mode)
       // The backend will handle auto-sync to P if applicability is 'KP'
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'salary_heads',
         operation: editingHead ? 'update' : 'create',
         id: editingHead?.id,
         data: payload,
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(`Salary head ${editingHead ? 'updated' : 'created'} successfully`);
       
@@ -159,12 +159,12 @@ export default function SalaryHeads() {
       setIsBulkDeleting(true);
       try {
         for (const id of selectedHeads) {
-          await invoke('master_crud', {
+          await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: 'salary_heads',
             operation: 'delete',
             id: id,
             moduleType: currentMode
-          });
+          }) });
         }
         toast.success(`${selectedHeads.length} salary heads deleted successfully`);
         setSelectedHeads([]);
@@ -181,12 +181,12 @@ export default function SalaryHeads() {
     if (!headToDelete) return;
 
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'salary_heads',
         operation: 'delete',
         id: headToDelete,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Salary head deleted successfully");
       setIsDeleteModalOpen(false);
       setHeadToDelete(null);
@@ -321,12 +321,12 @@ export default function SalaryHeads() {
         
         for (let i = 0; i < total; i += CHUNK_SIZE) {
           const chunk = normalizedData.slice(i, i + CHUNK_SIZE);
-          await invoke('master_crud', {
+          await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: 'salary_heads',
             operation: 'bulk_create',
             data: chunk,
             moduleType: currentMode
-          });
+          }) });
         }
         
         toast.success(`Bulk upload successful (${normalizedData.length} records processed)`);

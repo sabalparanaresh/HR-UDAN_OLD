@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import * as Tabs from '@radix-ui/react-tabs';
 import { 
   Save, Plus, Trash2, AlertCircle, 
@@ -95,10 +95,10 @@ export default function StatutorySettings() {
   const fetchHistory = async () => {
     try {
       const type = activeTab === 'PTAX' ? 'PTAX' : activeTab;
-      const data = await invoke<StatutoryConfig[]>('list_statutory_settings', {
+      const data = await fetchApi('/api/system/cmd/listStatutorySettings', { method: 'POST', body: JSON.stringify({
         type,
         moduleType: currentMode
-      });
+      }) });
       setHistory(data || []);
     } catch (e) {
       console.error('Failed to fetch history', e);
@@ -108,19 +108,19 @@ export default function StatutorySettings() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headsData = await invoke<SalaryHead[]>('master_crud', {
+      const headsData = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'salary_heads',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       setHeads(Array.isArray(headsData) ? headsData : []);
 
       const types = ['PF', 'ESI', 'PTAX', 'MIN_WAGE', 'LWF', 'BONUS'];
       for (const type of types) {
-        const data = await invoke<any>('get_statutory_settings', {
+        const data = await fetchApi('/api/system/cmd/getStatutorySettings', { method: 'POST', body: JSON.stringify({
           type,
           moduleType: currentMode
-        });
+        }) });
         if (data && data.config) {
           try {
             const config = typeof data.config === 'string' ? JSON.parse(data.config) : data.config;
@@ -144,12 +144,12 @@ export default function StatutorySettings() {
 
   const handleSave = async (type: string, config: any, effective_date: string) => {
     try {
-      await invoke('save_statutory_settings', {
+      await fetchApi('/api/system/cmd/saveStatutorySettings', { method: 'POST', body: JSON.stringify({
         type,
         config: { config, effective_date },
         moduleType: currentMode,
         id: editingId
-      });
+      }) });
       toast.success(`${type} settings saved successfully`);
       setEditingId(null);
       fetchHistory();
@@ -161,7 +161,7 @@ export default function StatutorySettings() {
   const handleDeleteHistory = async (id: number) => {
     if (!confirm('Are you sure you want to delete this historical record?')) return;
     try {
-      await invoke('delete_statutory_setting', { id, moduleType: currentMode });
+      await fetchApi('/api/system/cmd/deleteStatutorySetting', { method: 'POST', body: JSON.stringify({ id, moduleType: currentMode }) });
       toast.success('Record deleted');
       fetchHistory();
     } catch (e) {

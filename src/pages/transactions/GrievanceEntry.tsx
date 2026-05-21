@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   User, 
   Search, 
@@ -49,8 +49,8 @@ export default function GrievanceEntry() {
     setIsLoading(true);
     try {
       const [empData, catData] = await Promise.all([
-        invoke<Employee[]>('master_crud', { tableName: 'employees', operation: 'list', moduleType: currentMode }),
-        invoke<GrievanceCategory[]>('master_crud', { tableName: 'grievance_categories', operation: 'list', moduleType: currentMode })
+        fetchApi<Employee[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'employees', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<GrievanceCategory[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'grievance_categories', operation: 'list', moduleType: currentMode }) })
       ]);
       setEmployees(empData);
       setCategories(catData.filter(c => c.status === 1 || (c as any).status === undefined));
@@ -87,7 +87,7 @@ export default function GrievanceEntry() {
 
     setIsSaving(true);
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'grievances',
         operation: 'create',
         data: {
@@ -99,7 +99,7 @@ export default function GrievanceEntry() {
           status: 'OPEN'
         },
         moduleType: currentMode
-      });
+      }) });
       toast.success("Grievance submitted successfully");
       resetForm();
     } catch (err) {

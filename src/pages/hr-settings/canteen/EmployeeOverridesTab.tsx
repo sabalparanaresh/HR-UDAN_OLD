@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Search, Edit, XCircle, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand } from '../../../services/apiClient';
+import { invokeCommand, fetchApi } from '../../../services/apiClient';
 import { useModule } from '../../../contexts/ModuleContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Pagination } from '../../../components/common/Pagination';
@@ -24,7 +24,7 @@ export default function EmployeeOverridesTab() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const data: any = await invokeCommand('get_canteen_master_data', { moduleType: currentMode });
+      const data: any = await fetchApi('/api/canteen/master', { headers: { 'x-module-type': currentMode } });
       if (data.permissions) setPermissions(data.permissions);
     } catch (err) {
       toast.error('Failed to load overrides');
@@ -38,11 +38,14 @@ export default function EmployeeOverridesTab() {
   const handleSaveOverride = async () => {
     setIsSaving(true);
     try {
-      await invokeCommand('update_canteen_override', {
-        empId: editingOverride.emp_id,
-        rateOverride: editingOverride.is_manual_override ? editingOverride.rate_override : null,
-        benefitType: editingOverride.benefit_type,
-        moduleType: currentMode
+      await fetchApi('/api/canteen/override', {
+        method: 'PUT',
+        headers: { 'x-module-type': currentMode },
+        body: JSON.stringify({
+          empId: editingOverride.emp_id,
+          rateOverride: editingOverride.is_manual_override ? editingOverride.rate_override : null,
+          benefitType: editingOverride.benefit_type
+        })
       });
       toast.success('Override saved');
       setIsModalOpen(false);

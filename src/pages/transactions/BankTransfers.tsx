@@ -14,7 +14,7 @@ import {
   ChevronsRight
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -112,7 +112,7 @@ export default function BankTransfers() {
 
   const fetchConfigs = async () => {
     try {
-      const data = await invoke('get_bank_excel_configs', { module_type: currentMode }) as BankConfig[];
+      const data = await fetchApi<BankConfig[]>('/api/banking/configs', { headers: { 'x-module-type': currentMode } });
       setConfigs(data);
     } catch (err) {
       console.error("Failed to fetch configs:", err);
@@ -126,10 +126,7 @@ export default function BankTransfers() {
     }
     setIsLoading(true);
     try {
-      const data = await invoke('get_processed_salary_for_bank', { 
-        month: salaryMonth,
-        module_type: currentMode 
-      }) as any[];
+      const data = await fetchApi<any[]>(`/api/banking/processed-salary?month=${salaryMonth}`, { headers: { 'x-module-type': currentMode } });
       setSalaryData(data);
       if (data.length === 0) {
         toast.warning("No processed salary found for the selected month");

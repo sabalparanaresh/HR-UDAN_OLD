@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { fetchApi } from '../../services/apiClient';
 import { AgGridReact } from 'ag-grid-react';
 import { 
   ModuleRegistry, 
@@ -50,7 +50,13 @@ export default function FinalPayrollView() {
   const fetchData = async () => {
     setLoading(true); setError(''); setSuccess('');
     try {
-      const records = await invoke<any[]>('export_final_payroll', { monthYear });
+      const records = await fetchApi<any[]>('/api/payroll/export-final-payroll', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ monthYear })
+      });
       setData(records);
     } catch (e: any) {
       setError(String(e));
@@ -72,7 +78,13 @@ export default function FinalPayrollView() {
   const handleConsolidate = async () => {
     setLoading(true); setError(''); setSuccess('');
     try {
-      await invoke('process_payroll', { month: monthYear });
+      await fetchApi('/api/payroll/process-payroll', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ month: monthYear })
+      });
       setSuccess('Consolidation Successful');
       fetchData();
     } catch (e: any) {
@@ -85,7 +97,11 @@ export default function FinalPayrollView() {
   const handleLock = async () => {
     setLoading(true); setError(''); setSuccess('');
     try {
-      await invoke('lock_final_payroll', { monthYear });
+      await fetchApi('/api/payroll/lock-final-payroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ monthYear })
+      });
       setSuccess('Payroll Locked Successfully');
       fetchData();
     } catch (e: any) {

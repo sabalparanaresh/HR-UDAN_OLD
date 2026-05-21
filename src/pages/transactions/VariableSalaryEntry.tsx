@@ -8,7 +8,7 @@ import {
 import { toast } from 'sonner';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from '../../utils/xlsx';
 import { useModule } from '../../contexts/ModuleContext';
@@ -209,12 +209,12 @@ export default function VariableSalaryEntry({ type, currentUser }: VariableSalar
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headData = await invoke<SalaryHead[]>('master_crud', { 
+      const headData = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ 
         tableName: 'salary_heads', 
         operation: 'list', 
         moduleType: currentMode,
         filters: { type: type }
-      });
+      }) });
       setHeads(headData);
     } catch (err) {
       toast.error("Failed to fetch master data");
@@ -259,9 +259,9 @@ export default function VariableSalaryEntry({ type, currentUser }: VariableSalar
 
       if (currentMode === 'K') {
         const payload = { ...entryData, id: editId || undefined };
-        await invoke('save_transaction_entry', { payload });
+        await fetchApi('/api/payroll/transaction/save', { method: 'POST', body: JSON.stringify({ payload }) });
       } else {
-        await invoke('transaction_crud', {
+        await fetchApi('/api/payroll/transaction/crud', { method: 'POST', body: JSON.stringify({
           operation: editId ? 'update' : 'create',
           id: editId || undefined,
           data: {
@@ -277,7 +277,7 @@ export default function VariableSalaryEntry({ type, currentUser }: VariableSalar
             isBulkEntry: false
           },
           moduleType: currentMode
-        });
+        }) });
       }
       toast.success(`${type} entry ${editId ? 'updated' : 'saved'} successfully`);
       setFormData({
@@ -317,11 +317,11 @@ export default function VariableSalaryEntry({ type, currentUser }: VariableSalar
     if (!confirm(`Are you sure you want to delete ${selectedHistoryItems.length} transactions?`)) return;
 
     try {
-      await invoke('transaction_crud', { 
+      await fetchApi('/api/payroll/transaction/crud', { method: 'POST', body: JSON.stringify({ 
          operation: 'bulk_delete', 
          data: selectedHistoryItems,
          moduleType: currentMode 
-      });
+      }) });
       toast.success(`Deleted ${selectedHistoryItems.length} transactions`);
       setSelectedHistoryItems([]);
       refetchHistory();
@@ -365,10 +365,10 @@ export default function VariableSalaryEntry({ type, currentUser }: VariableSalar
          };
       });
       
-      const res = await invoke<{ status: string, successCount: number, failedCount: number }>('bulk_insert_transactions', { 
+      const res = await fetchApi<{ status: string, successCount: number, failedCount: number }>('/api/payroll/transaction/bulk-insert', { method: 'POST', body: JSON.stringify({ 
          payload: payloadToInsert,
          moduleType: currentMode
-      });
+      }) });
       
       toast.success(`${res.successCount} transactions saved successfully` + (res.failedCount ? ` (${res.failedCount} failed)` : ''));
       const sysMm = String(new Date().getMonth() + 1).padStart(2, '0');
@@ -431,10 +431,10 @@ export default function VariableSalaryEntry({ type, currentUser }: VariableSalar
              authorised_by_name: record.Authorizer || '',
              is_bulk_entry: 1
         }));
-        const res = await invoke<{ status: string, successCount: number, failedCount: number }>('bulk_insert_transactions', { 
+        const res = await fetchApi<{ status: string, successCount: number, failedCount: number }>('/api/payroll/transaction/bulk-insert', { method: 'POST', body: JSON.stringify({ 
            payload: payloadData,
            moduleType: currentMode
-        });
+        }) });
         toast.success(`Bulk upload complete: ${res.successCount} saved` + (res.failedCount ? `, ${res.failedCount} failed.` : '.'));
         if (view === 'HISTORY') refetchHistory();
       } catch (err: any) {
@@ -1026,7 +1026,7 @@ export default function VariableSalaryEntry({ type, currentUser }: VariableSalar
                                   onClick={async () => {
                                     if (confirm('Delete this transaction?')) {
                                       try {
-                                        await invoke('transaction_crud', { operation: 'delete', id: t.id, moduleType: currentMode });
+                                        await fetchApi('/api/payroll/transaction/crud', { method: 'POST', body: JSON.stringify({ operation: 'delete', id: t.id, moduleType: currentMode }) });
                                         toast.success("Deleted");
                                         refetchHistory();
                                       } catch(e) {

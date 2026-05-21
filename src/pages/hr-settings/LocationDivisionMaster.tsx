@@ -14,7 +14,7 @@ import {
   Save,
   Building2
 } from 'lucide-react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
@@ -58,11 +58,11 @@ export default function LocationDivisionMaster() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<OrgRecord[]>('master_crud', { 
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ 
         tableName: 'org_hierarchy', 
         operation: 'list', 
         moduleType: currentMode 
-      });
+      }) });
       setRecords(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error("Failed to fetch data");
@@ -95,7 +95,7 @@ export default function LocationDivisionMaster() {
         return;
       }
 
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'org_hierarchy',
         operation: editingRecord ? 'update' : 'create',
         id: editingRecord?.id,
@@ -107,7 +107,7 @@ export default function LocationDivisionMaster() {
           status: formData.status ? 1 : 0
         },
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(editingRecord ? "Record updated" : "Record created");
       setIsModalOpen(false);
@@ -132,12 +132,12 @@ export default function LocationDivisionMaster() {
 
   const handleDelete = async (id: number) => {
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'org_hierarchy',
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Record deleted");
       setDeleteConfirmId(null);
       fetchData();
@@ -199,12 +199,12 @@ export default function LocationDivisionMaster() {
           return;
         }
 
-        await invoke('master_crud', {
+        await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'org_hierarchy',
           operation: 'bulk_create',
           data: recordsToCreate,
           moduleType: currentMode
-        });
+        }) });
 
         toast.success(`${recordsToCreate.length} records processed`);
         fetchData();

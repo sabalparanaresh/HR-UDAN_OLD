@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { User as UserType, Employee } from '../../types';
 import EmployeeSearchSelect from '../../components/form/EmployeeSearchSelect';
@@ -69,13 +69,9 @@ const CanteenEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUser 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [masterData, transData]: [any, any] = await Promise.all([
-        invoke('get_canteen_master_data', { moduleType: currentMode }),
-        invoke('get_canteen_transactions', { 
-          ...filters, 
-          emp_id: filters.emp_ids.length > 0 ? filters.emp_ids.join(',') : '', 
-          moduleType: currentMode 
-        })
+      const [masterData, transData] = await Promise.all([
+        fetchApi<any>('/api/canteen/master', { headers: { 'x-module-type': currentMode } }),
+        fetchApi<any>(`/api/canteen/transactions?startDate=${filters.start_date}&endDate=${filters.end_date}&empId=${filters.emp_ids.length > 0 ? filters.emp_ids.join(',') : ''}&windowId=${filters.window_id}`, { headers: { 'x-module-type': currentMode } })
       ]);
 
       if (masterData.employees) setEmployees(masterData.employees);
@@ -95,7 +91,7 @@ const CanteenEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUser 
   const handleSyncPunches = async () => {
     setIsSaving(true);
     try {
-      const data: any = await invoke('sync_canteen_punches', { moduleType: currentMode });
+      const data = await fetchApi<any>('/api/canteen/sync-punches', { method: 'POST', headers: { 'x-module-type': currentMode } });
       toast.success(`Synced ${data.syncedCount} punches from biometric device`);
       fetchData();
     } catch (error) {
@@ -135,7 +131,11 @@ const CanteenEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUser 
       const chunkSize = 200;
       for (let i = 0; i < punches.length; i += chunkSize) {
         const chunk = punches.slice(i, i + chunkSize);
-        await invoke('bulk_save_canteen_punches', { punches: chunk, moduleType: currentMode });
+        await fetchApi('/api/canteen/bulk-save', {
+          method: 'POST',
+          headers: { 'x-module-type': currentMode },
+          body: JSON.stringify({ punches: chunk })
+        });
       }
 
       toast.success('Manual punches saved');

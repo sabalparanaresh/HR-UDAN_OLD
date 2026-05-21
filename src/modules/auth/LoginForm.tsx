@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { fetchApi } from '../../services/apiClient';
 import { User } from '../../types';
 
 interface LoginFormProps {
@@ -16,9 +16,12 @@ export function LoginForm({ onLoginSuccess, onForgotPassword }: LoginFormProps) 
     e.preventDefault();
     setAuthError('');
     try {
-      const data = await invoke<User>('handle_login', { 
-        username: loginUsername, 
-        password: loginPassword 
+      const data = await fetchApi<User>('/api/auth/login', { 
+        method: 'POST',
+        body: JSON.stringify({
+          username: loginUsername, 
+          password: loginPassword
+        })
       });
       onLoginSuccess(data);
     } catch (err: any) {

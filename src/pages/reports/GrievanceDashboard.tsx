@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   MessageSquare, 
   Clock, 
@@ -46,7 +46,7 @@ export default function GrievanceDashboard() {
   const fetchGrievances = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<Grievance[]>('get_open_grievances', { moduleType: currentMode });
+      const data = await fetchApi('/api/employee/cmd/getOpenGrievances', { method: 'POST', body: JSON.stringify({ moduleType: currentMode }) });
       setGrievances(data);
     } catch (err) {
       toast.error("Failed to fetch grievances");
@@ -63,11 +63,11 @@ export default function GrievanceDashboard() {
 
     setIsSubmitting(true);
     try {
-      await invoke('resolve_grievance', {
+      await fetchApi('/api/employee/cmd/resolveGrievance', { method: 'POST', body: JSON.stringify({
         id: resolvingId,
         resolution_notes: resolutionNotes,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Grievance resolved successfully");
       setResolvingId(null);
       setResolutionNotes('');

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { 
   Calculator, 
@@ -229,8 +229,12 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
     if (step === 'Filtering' || step === 'Consolidating') return;
     const type = step === 'K_Processing' ? 'K' : 'P';
     try {
-      const res = await invoke<{data: any[], total: number}>('get_paginated_salary_results', {
-        month: filters.selectedMonth, type, page: p, limit, search: q
+      const res = await fetchApi<{data: any[], total: number}>('/api/payroll/get-paginated-salary-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: filters.selectedMonth, type, page: p, limit, search: q
+        })
       });
       setGridData(res.data);
       setTotalRecords(res.total);
@@ -277,7 +281,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
 
   const fetchPayrollRules = async () => {
     try {
-      const rules = await invoke<any>('get_payroll_rules');
+      const rules = await fetchApi<any>('/api/config/payroll-rules');
       if (rules && rules.k_salary_calculation_source) {
         setFilters({ kLogicSource: rules.k_salary_calculation_source });
       }
@@ -288,7 +292,7 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
 
   const fetchKOnlyHeads = async () => {
     try {
-      const dbHeads = await invoke<any[]>('master_crud', { tableName: 'salary_heads', operation: 'list', moduleType: 'K' });
+      const dbHeads = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'salary_heads', operation: 'list', moduleType: 'K' }) });
       // In the context of Excel, "K-only head" and "KP head" are distinct.
       setKOnlyHeads(dbHeads.filter(h => h.allocation_type === 'K' || h.allocation_type === 'K_ONLY'));
       setKpHeads(dbHeads.filter(h => h.allocation_type === 'KP'));
@@ -300,13 +304,13 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   const fetchFilters = async () => {
     try {
       const [depts, locs, grps, divs, cls, cats, desigs] = await Promise.all([
-        invoke<Department[]>('master_crud', { tableName: 'departments', operation: 'list', moduleType: currentMode }),
-        invoke<Location[]>('master_crud', { tableName: 'locations', operation: 'list', moduleType: currentMode }),
-        invoke<Group[]>('master_crud', { tableName: 'groups', operation: 'list', moduleType: currentMode }),
-        invoke<Division[]>('master_crud', { tableName: 'divisions', operation: 'list', moduleType: currentMode }),
-        invoke<any[]>('master_crud', { tableName: 'classes', operation: 'list', moduleType: currentMode }),
-        invoke<any[]>('master_crud', { tableName: 'categories', operation: 'list', moduleType: currentMode }),
-        invoke<any[]>('master_crud', { tableName: 'designations', operation: 'list', moduleType: currentMode }),
+        fetchApi<Department[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'departments', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<Location[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'locations', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<Group[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'groups', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<Division[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'divisions', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'classes', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'categories', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'designations', operation: 'list', moduleType: currentMode }) }),
       ]);
       setDepartments(depts);
       setLocations(locs);
@@ -323,17 +327,21 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   const handleProcessKModule = async () => {
     setLoading(true);
     try {
-      const response = await invoke<any>('calculate_k_module_wages', {
-        month: filters.selectedMonth,
-        filters: {
-          departmentId: filters.selectedDeptIds.length > 0 ? filters.selectedDeptIds : null,
-          locationId: filters.selectedLocationIds.length > 0 ? filters.selectedLocationIds : null,
-          groupId: filters.selectedGroupIds.length > 0 ? filters.selectedGroupIds : null,
-          divisionId: filters.selectedDivisionIds.length > 0 ? filters.selectedDivisionIds : null,
-          classId: filters.selectedClassIds.length > 0 ? filters.selectedClassIds : null,
-          categoryId: filters.selectedCategoryIds.length > 0 ? filters.selectedCategoryIds : null,
-          designationId: filters.selectedDesignationIds.length > 0 ? filters.selectedDesignationIds : null,
-        }
+      const response = await fetchApi<any>('/api/payroll/calculate-kmodule-wages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: filters.selectedMonth,
+          filters: {
+            departmentId: filters.selectedDeptIds.length > 0 ? filters.selectedDeptIds : null,
+            locationId: filters.selectedLocationIds.length > 0 ? filters.selectedLocationIds : null,
+            groupId: filters.selectedGroupIds.length > 0 ? filters.selectedGroupIds : null,
+            divisionId: filters.selectedDivisionIds.length > 0 ? filters.selectedDivisionIds : null,
+            classId: filters.selectedClassIds.length > 0 ? filters.selectedClassIds : null,
+            categoryId: filters.selectedCategoryIds.length > 0 ? filters.selectedCategoryIds : null,
+            designationId: filters.selectedDesignationIds.length > 0 ? filters.selectedDesignationIds : null,
+          }
+        })
       });
       const rawData = Array.isArray(response) ? response : response.employees;
       const validData = rawData.filter((r: any) => !r.exception);
@@ -361,9 +369,13 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
     }
     setLoading(true);
     try {
-      const pData = await invoke<any[]>('calculate_p_module_statutory', {
-        month: filters.selectedMonth,
-        kResults: kResults
+      const pData = await fetchApi<any[]>('/api/payroll/calculate-pmodule-statutory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: filters.selectedMonth,
+          kResults: kResults
+        })
       });
       setMergedResults(pData);
       setCurrentStep('P_Syncing');
@@ -378,8 +390,12 @@ export default function SalaryProcessing({ currentUser }: { currentUser: UserTyp
   const handleConsolidateFinal = async () => {
     setProcessing(true);
     try {
-      await invoke('process_payroll', {
-        month: filters.selectedMonth
+      await fetchApi('/api/payroll/process-payroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: filters.selectedMonth
+        })
       });
       toast.success("Final Consolidation & Merge Successful!");
       setCurrentStep('Consolidating');

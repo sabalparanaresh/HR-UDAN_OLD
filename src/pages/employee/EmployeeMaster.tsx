@@ -170,7 +170,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
 
   const fetchRevisionHistory = async (empId: number) => {
     try {
-      const history = await invokeCommand<any[]>('get_salary_revision_history', { empId, moduleType: currentMode });
+      const history = await fetchApi('/api/employee/cmd/getSalaryRevisionHistory', { method: 'POST', body: JSON.stringify({ empId, moduleType: currentMode }) });
       setRevisionHistory(history);
     } catch (err) {
       console.error("Failed to fetch revision history", err);
@@ -181,14 +181,14 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (!selectedEmployeeId) return;
     try {
       setIsLoading(true);
-      await invokeCommand('record_salary_revision', {
+      await fetchApi('/api/employee/cmd/recordSalaryRevision', { method: 'POST', body: JSON.stringify({
         empId: parseInt(selectedEmployeeId),
         newRate: revisionData.newRate,
         effectiveDate: revisionData.effectiveDate,
         revisionType: revisionData.revisionType,
         remarks: revisionData.remarks,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Salary revision recorded successfully");
       setIsRevisionRecordOpen(false);
       fetchEmployees();
@@ -572,21 +572,26 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
   const fetchEmployees = async (pageIndex = employeePageIndex, pageSize = employeePageSize, search = employeeSearch, filters = employeeFilters) => {
     try {
       const ts = Date.now();
-      const result = await invokeCommand<any>('master_crud', { 
-        tableName: 'employees', 
-        operation: 'list', 
-        moduleType: currentMode,
-        limit: pageSize,
-        offset: pageIndex * pageSize,
-        search,
-        filters,
-        includeTotal: true,
-        _v: ts 
+      const queryParams = new URLSearchParams({
+        module_type: currentMode,
+        limit: String(pageSize),
+        offset: String(pageIndex * pageSize)
       });
+      if (search) queryParams.append('search', search);
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v) queryParams.append(k, String(v));
+        });
+      }
       
-      const employeesList = processEmployeeList(result?.rows || []);
+      const result = await fetchApi<any>(`/api/employees?${queryParams.toString()}`);
+      // Fallback for missing pagination meta in result
+      const rows = Array.isArray(result) ? result : (result?.rows || []);
+      const total = Array.isArray(result) ? result.length : (result?.total || rows.length);
+      
+      const employeesList = processEmployeeList(rows);
       setEmployees(employeesList);
-      setEmployeeTotal(result?.total || 0);
+      setEmployeeTotal(total);
 
       // Handle mode switch targeting
       const modeSwitchOcurred = lastFetchedModeRef.current !== currentMode;
@@ -616,20 +621,20 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     try {
       const ts = Date.now();
       const [wd, cls, cat, hierarchy, grp, dpt, shft, config, des, et, es, slabs, heads, cc] = await Promise.all([
-        invokeCommand<any[]>('master_crud', { tableName: 'working_day_types', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any[]>('master_crud', { tableName: 'classes', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any[]>('master_crud', { tableName: 'categories', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any[]>('master_crud', { tableName: 'org_hierarchy', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any[]>('master_crud', { tableName: 'groups', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any[]>('master_crud', { tableName: 'departments', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any[]>('master_crud', { tableName: 'shifts', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any>('master_crud', { tableName: 'settings', operation: 'get', id: 'employee_code_manual_entry', moduleType: currentMode, _v: ts }).catch(() => ({ value: '0' })),
-        invokeCommand<any[]>('master_crud', { tableName: 'designations', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any[]>('master_crud', { tableName: 'employment_types', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<any[]>('master_crud', { tableName: 'employee_statuses', operation: 'list', moduleType: currentMode, _v: ts }).catch(() => []),
-        invokeCommand<SalarySlab[]>('master_crud', { tableName: 'salary_slabs', operation: 'list', moduleType: 'P', _v: ts }).catch(() => []),
-        invokeCommand<SalaryHead[]>('master_crud', { tableName: 'salary_heads', operation: 'list', moduleType: 'P', _v: ts }).catch(() => []),
-        invokeCommand<any>('get_company_config', { module_type: currentMode, _v: ts }).catch(() => null)
+        fetchApi<any[]>(`/api/master-data/working_day_types?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any[]>(`/api/master-data/classes?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any[]>(`/api/master-data/categories?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any[]>(`/api/master-data/org_hierarchy?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any[]>(`/api/master-data/groups?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any[]>(`/api/master-data/departments?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any[]>(`/api/master-data/shifts?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any>(`/api/master-data/settings/employee_code_manual_entry?module_type=${currentMode}&_v=${ts}`).catch(() => ({ value: '0' })),
+        fetchApi<any[]>(`/api/master-data/designations?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any[]>(`/api/master-data/employment_types?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<any[]>(`/api/master-data/employee_statuses?module_type=${currentMode}&_v=${ts}`).catch(() => []),
+        fetchApi<SalarySlab[]>(`/api/master-data/salary_slabs?module_type=P&_v=${ts}`).catch(() => []),
+        fetchApi<SalaryHead[]>(`/api/master-data/salary_heads?module_type=P&_v=${ts}`).catch(() => []),
+        fetchApi<any>('/api/config/company', { headers: { 'x-module-type': currentMode } }).catch(() => null)
       ]);
 
       setWorkingDayTypes(Array.isArray(wd) ? wd : []);
@@ -679,10 +684,10 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (selectedDeptId) {
       const fetchDeptSettings = async () => {
         try {
-          const settings = await invokeCommand<any>('get_dept_settings', {
+          const settings = await fetchApi('/api/master-data/cmd/getDeptSettings', { method: 'POST', body: JSON.stringify({
             deptId: parseInt(selectedDeptId),
             moduleType: currentMode
-          });
+          }) });
           if (settings.default_location_id) setValue('location_id', String(settings.default_location_id));
           if (settings.default_division_id) setValue('division_id', String(settings.default_division_id));
           if (settings.default_class_id) setValue('class_id', String(settings.default_class_id));
@@ -702,11 +707,11 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (selectedDeptId && selectedDesignation) {
       const fetchStdRate = async () => {
         try {
-          const data = await invokeCommand<any>('get_dept_standard_rates', {
+          const data = await fetchApi('/api/master-data/cmd/getDeptStandardRates', { method: 'POST', body: JSON.stringify({
             deptId: parseInt(selectedDeptId),
             designation: selectedDesignation,
             moduleType: currentMode
-          });
+          }) });
           setCurrentStdRate(data.standard_rate || null);
         } catch (error) {
           console.error("Failed to fetch standard rates");
@@ -735,12 +740,12 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (!value) return;
     
     try {
-      const result = await invokeCommand<any>('check_duplicate', {
+      const result = await fetchApi('/api/employee/cmd/checkDuplicate', { method: 'POST', body: JSON.stringify({
         field,
         value,
         excludeId: selectedEmployeeId ? parseInt(selectedEmployeeId) : undefined,
         moduleType: currentMode
-      });
+      }) });
       
       if (result.existing) {
         if (field === 'account_no') {
@@ -824,10 +829,16 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
 
   const fetchWaterfall = async (empId: number) => {
     try {
-      const result = await invokeCommand<any>('process_waterfall_distribution', {
-        parent_id: empId,
-        month: new Date().toISOString().slice(0, 7), // YYYY-MM
-        moduleType: currentMode
+      const result = await fetchApi<any>('/api/payroll/process-waterfall-distribution', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-module-type': currentMode
+        },
+        body: JSON.stringify({
+          parent_id: empId,
+          month: new Date().toISOString().slice(0, 7) // YYYY-MM
+        })
       });
       // Fetch children details
       const children = employees.filter(e => e.parent_employee_id === empId);
@@ -875,10 +886,10 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
       }
 
       if (currentMode === 'P') {
-        const complianceData = await invokeCommand<any>('check_min_wage', {
+        const complianceData = await fetchApi('/api/employee/cmd/checkMinWage', { method: 'POST', body: JSON.stringify({
           amount: data.wage_amount,
           moduleType: currentMode
-        });
+        }) });
         if (!complianceData.compliant) {
           const proceed = window.confirm("Warning: Statutory rate is below minimum wage. Proceed anyway?");
           if (!proceed) {
@@ -896,10 +907,10 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
       let finalPhotoPath = data.photo_path;
       if (photoPreview && photoPreview.startsWith('data:image')) {
         try {
-          const result = await invokeCommand<any>('save_employee_asset', {
+          const result = await fetchApi('/api/employee/cmd/saveEmployeeAsset', { method: 'POST', body: JSON.stringify({
             base64: photoPreview,
             emp_code: data.emp_code
-          });
+          }) });
           finalPhotoPath = result.path;
         } catch (assetErr) {
           console.error("Failed to save employee photo:", assetErr);
@@ -935,13 +946,13 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
         Object.entries(payload).filter(([_, v]) => v !== null && v !== undefined)
       );
       
-      await invokeCommand('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'employees',
         operation: selectedEmployeeId ? 'update' : 'create',
         id: selectedEmployeeId ? parseInt(selectedEmployeeId) : undefined,
         data: cleanPayload,
         moduleType: currentMode
-      });
+      }) });
 
       // Success: Toast and reset
       toast.success(selectedEmployeeId ? "Employee record updated successfully" : "Employee record saved successfully", {
@@ -993,11 +1004,11 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
 
     setIsSyncing(true);
     try {
-      await invokeCommand('sync_employee_to_pakka', {
+      await fetchApi('/api/employee/cmd/syncEmployeeToPakka', { method: 'POST', body: JSON.stringify({
         employee_id: syncEmployee.id,
         slab_id: Number(syncSlabId),
         wage_amount: syncWageAmount
-      });
+      }) });
 
       toast.success('Employee synced to Pakka successfully');
       setIsSyncDialogOpen(false);
@@ -1033,7 +1044,7 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     setBaseMasterRate(activeWageAmount);
 
     try {
-      const history = await invokeCommand<any[]>('get_salary_revision_history', { empId: emp.id, moduleType: currentMode });
+      const history = await fetchApi('/api/employee/cmd/getSalaryRevisionHistory', { method: 'POST', body: JSON.stringify({ empId: emp.id, moduleType: currentMode }) });
       setRevisionHistory(history);
       
       const today = new Date().toISOString().split('T')[0];
@@ -1054,10 +1065,10 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     if (currentMode === 'P') {
       const fetchLedger = async () => {
         try {
-          const data = await invokeCommand<any[]>('get_gratuity_ledger', {
+          const data = await fetchApi('/api/system/cmd/getGratuityLedger', { method: 'POST', body: JSON.stringify({
             empId: emp.id,
             moduleType: 'P'
-          });
+          }) });
           setGratuityLedger(Array.isArray(data) ? data : []);
         } catch (e) {
           console.error('Failed to fetch gratuity ledger', e);
@@ -1177,11 +1188,12 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
   const confirmDelete = async () => {
     if (!employeeToDelete) return;
     try {
-      await invokeCommand('master_crud', {
-        tableName: 'employees',
-        operation: 'delete',
-        id: employeeToDelete,
-        moduleType: currentMode
+      await fetchApi(`/api/employees/${employeeToDelete}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-module-type': currentMode
+        }
       });
       toast.success("Employee record deleted successfully");
       fetchEmployees();
@@ -1196,11 +1208,13 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
   const confirmBulkDelete = async () => {
     if (employeesToDelete.length === 0) return;
     try {
-      await invokeCommand('master_crud', {
-        tableName: 'employees',
-        operation: 'bulk_delete',
-        data: { ids: employeesToDelete },
-        moduleType: currentMode
+      await fetchApi(`/api/employees`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-module-type': currentMode
+        },
+        body: JSON.stringify({ ids: employeesToDelete })
       });
       toast.success(`${employeesToDelete.length} employees deleted successfully`);
       fetchEmployees();
@@ -1223,8 +1237,8 @@ export default function EmployeeMaster({ currentUser }: { currentUser: UserType 
     
     try {
       const [configRes, nextCodeRes] = await Promise.all([
-        invokeCommand<any>('get_company_config', { moduleType: currentMode }),
-        invokeCommand<{ nextCode: string }>('get_next_employee_code', { moduleType: currentMode })
+        fetchApi<any>('/api/config/company', { headers: { 'x-module-type': currentMode } }),
+        fetchApi('/api/employee/cmd/getNextEmployeeCode', { method: 'POST', body: JSON.stringify({ moduleType: currentMode }) })
       ]);
 
       const isManual = Boolean(configRes?.emp_id_manual_entry);

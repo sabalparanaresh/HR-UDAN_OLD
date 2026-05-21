@@ -1,6 +1,6 @@
 import * as XLSX from '../../utils/xlsx';
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useAuthStore } from '../../store/authStore';
 import { RBACGuard } from '../../components/rbac';
 import { Plus, Save, Trash2, Edit2, Download, Upload, Loader2, X, FileSpreadsheet } from 'lucide-react';
@@ -61,7 +61,12 @@ export default function PieceRateConfig() {
     const fetchHeads = async () => {
         setIsLoading(true);
         try {
-            const result = await invoke<any>('piece_rate_crud', { operation: 'list', page, limit, search });
+            const url = new URL(window.location.origin + '/api/salary-settings/piece-rate/heads');
+            url.searchParams.set('page', String(page));
+            url.searchParams.set('limit', String(limit));
+            if (search) url.searchParams.set('search', search);
+
+            const result = await fetchApi(url.pathname + url.search, { method: 'GET' });
             if (result.success) { setHeads(result.data); setTotalHeads(result.total); }
         } catch (err) {
             console.error(err);
@@ -126,10 +131,9 @@ export default function PieceRateConfig() {
                 status: 1
             }));
 
-            const result = await invoke<any>('piece_rate_crud', {
-                operation: 'upload',
+            const result = await fetchApi('/api/salary-settings/piece-rate/heads/upload', { method: 'POST', body: JSON.stringify({
                 data: mapped
-            });
+            }) });
             if (result.success) {
                 alert('Upload successful');
                 fetchHeads();
@@ -147,10 +151,7 @@ export default function PieceRateConfig() {
         if (!currentHead.name || (!currentHead.fixed_rate && currentHead.calculation_type === 'FIXED')) return;
         setIsSaving(true);
         try {
-            const result = await invoke<any>('piece_rate_crud', {
-                operation: currentHead.id ? 'update' : 'create',
-                data: currentHead
-            });
+            const result = await fetchApi('/api/salary-settings/piece-rate/heads', { method: 'POST', body: JSON.stringify(currentHead) });
             if (result.success) {
                 setModalOpen(false);
                 fetchHeads();
@@ -165,7 +166,7 @@ export default function PieceRateConfig() {
     const handleDelete = async (id: string) => {
         if (!confirm('Delete this piece rate config?')) return;
         try {
-            await invoke('piece_rate_crud', { operation: 'delete', id });
+            await fetchApi(`/api/salary-settings/piece-rate/heads/\${id}`, { method: 'DELETE' });
             fetchHeads();
         } catch (err) {
             console.error(err);

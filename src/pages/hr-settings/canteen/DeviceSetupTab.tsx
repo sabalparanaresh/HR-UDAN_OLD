@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Database, FolderOpen, Settings2, Coffee, RefreshCw, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand } from '../../../services/apiClient';
+import { invokeCommand, fetchApi } from '../../../services/apiClient';
 import { useModule } from '../../../contexts/ModuleContext';
 import { motion } from 'motion/react';
 
@@ -33,7 +33,7 @@ export default function DeviceSetupTab() {
     async function loadData() {
       setIsLoading(true);
       try {
-        const data: any = await invokeCommand('get_canteen_master_data', { moduleType: currentMode });
+        const data: any = await fetchApi('/api/canteen/master', { headers: { 'x-module-type': currentMode } });
         if (data.config) setConfig(data.config);
       } catch (err) {
         toast.error('Failed to load device config');
@@ -47,13 +47,13 @@ export default function DeviceSetupTab() {
   const handleSaveConfig = async () => {
     setIsSaving(true);
     try {
-      await invokeCommand('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'canteen_config',
         operation: config.id ? 'update' : 'create',
         id: config.id,
         data: config,
         moduleType: currentMode
-      });
+      }) });
       toast.success('Configuration saved');
     } catch (error) {
       toast.error('Failed to save configuration');

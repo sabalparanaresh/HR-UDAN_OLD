@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Calendar, 
   Plus, 
@@ -75,11 +75,11 @@ export default function WorkingDayTypes() {
   const fetchTypes = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<WorkingDayType[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'working_day_types',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       
       const normalizedData = (Array.isArray(data) ? data : []).map(item => ({
         ...item,
@@ -156,7 +156,7 @@ export default function WorkingDayTypes() {
     }
 
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'working_day_types',
         operation: isEditing ? 'update' : 'create',
         id: isEditing,
@@ -169,7 +169,7 @@ export default function WorkingDayTypes() {
           allocation_type: formData.allocation_type || 'KP'
         },
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(isEditing ? "Configuration updated" : "Configuration created");
       if (currentMode === 'K') resetForm();
@@ -207,12 +207,12 @@ export default function WorkingDayTypes() {
 
   const handleDelete = async (id: number) => {
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'working_day_types',
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Type deleted");
       setDeleteConfirmId(null);
       fetchTypes();

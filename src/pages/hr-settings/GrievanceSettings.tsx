@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Plus, 
   Edit2, 
@@ -48,11 +48,11 @@ export default function GrievanceSettings() {
   const fetchCategories = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<GrievanceCategory[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'grievance_categories',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       setCategories(data);
     } catch (err) {
       toast.error("Failed to fetch grievance categories");
@@ -71,21 +71,21 @@ export default function GrievanceSettings() {
     setIsSaving(true);
     try {
       if (editingId) {
-        await invoke('master_crud', {
+        await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'grievance_categories',
           operation: 'update',
           id: editingId,
           data: formData,
           moduleType: currentMode
-        });
+        }) });
         toast.success("Category updated successfully");
       } else {
-        await invoke('master_crud', {
+        await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'grievance_categories',
           operation: 'create',
           data: formData,
           moduleType: currentMode
-        });
+        }) });
         toast.success("Category created successfully");
       }
       resetForm();
@@ -111,12 +111,12 @@ export default function GrievanceSettings() {
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this category?")) return;
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'grievance_categories',
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Category deleted successfully");
       fetchCategories();
     } catch (err) {

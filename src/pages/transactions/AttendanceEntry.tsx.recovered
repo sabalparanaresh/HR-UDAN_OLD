@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
+import { invokeCommand as invoke } from '../../services/apiClient';
 import { 
   RefreshCw, Download, CheckCircle2, AlertCircle, Loader2, 
   Fingerprint, Calendar, User, Search, Filter, Plus, 
@@ -99,25 +99,23 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
   const fetchLogs = async () => {
     setIsLoading(true);
     try {
-      const customFilters = {
-        fromDate: filters.fromDate,
-        toDate: filters.toDate,
-        empCodes: employees.filter(e => filters.selectedEmpIds.includes(e.id)).map(e => e.emp_code),
-        departmentId: filters.deptId,
-        locationId: filters.locationId,
-        divisionId: filters.divisionId,
-        groupId: filters.groupId,
-        categoryId: filters.categoryId,
-        classId: filters.classId,
-        designationId: filters.designationId,
-        machineName: filters.machineName,
-        isMissed: filters.punchesFilter === 'MISSED'
-      };
-      const queryParams = new URLSearchParams({
-        module_type: currentMode,
-        filters: JSON.stringify(customFilters)
+      const data = await invoke<AttendanceLog[]>('get_attendance_logs', {
+        filters: {
+          fromDate: filters.fromDate,
+          toDate: filters.toDate,
+          empCodes: employees.filter(e => filters.selectedEmpIds.includes(e.id)).map(e => e.emp_code),
+          departmentId: filters.deptId,
+          locationId: filters.locationId,
+          divisionId: filters.divisionId,
+          groupId: filters.groupId,
+          categoryId: filters.categoryId,
+          classId: filters.classId,
+          designationId: filters.designationId,
+          machineName: filters.machineName,
+          isMissed: filters.punchesFilter === 'MISSED'
+        },
+        moduleType: currentMode
       });
-      const data = await fetchApi<AttendanceLog[]>(`/api/attendance/logs?${queryParams.toString()}`);
       setLogs(Array.isArray(data) ? data : []);
     } catch (err) {
       toast.error("Failed to load attendance logs");
@@ -156,15 +154,16 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
       const connectionString = "Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=C:\\Biometric\\data.mdb";
       const deviceEntryType = "Multi-Row";
       
-      const biometricLogs = await fetchApi<any[]>(`/api/attendance/biometric/sync?module_type=${currentMode}`, {
-        method: 'GET'
+      const biometricLogs = await invoke<any[]>('fetch_biometric_logs', { 
+        connectionString, 
+        deviceEntryType,
+        moduleType: currentMode
       });
       
       // Save to backend
-      const result = await fetchApi<any>('/api/attendance/biometric/save', { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-module-type': currentMode },
-        body: JSON.stringify({ logs: biometricLogs })
+      const result = await invoke<any>('save_biometric_logs', { 
+        logs: biometricLogs,
+        moduleType: currentMode
       });
       
       setProgress(100);
@@ -242,19 +241,13 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
       const punchInFull = manualData.punch_in ? `${manualData.date}T${manualData.punch_in}` : null;
       const punchOutFull = manualData.punch_out ? `${manualData.date}T${manualData.punch_out}` : null;
 
-      await fetchApi('/api/attendance/manual-punch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-module-type': currentMode
-        },
-        body: JSON.stringify({
-          empId: parseInt(manualData.emp_id),
-          date: manualData.date,
-          punchIn: punchInFull,
-          punchOut: punchOutFull,
-          shiftId: null
-        })
+      await invoke('save_manual_attendance', {
+        emp_id: parseInt(manualData.emp_id),
+        date: manualData.date,
+        punch_in: punchInFull,
+        punch_out: punchOutFull,
+        shift_id: null,
+        module_type: currentMode
       });
 
       toast.success("Manual entry saved successfully");
@@ -307,19 +300,13 @@ const AttendanceEntry: React.FC<{ currentUser: UserType | null }> = ({ currentUs
     if (!edit) return;
 
     try {
-      await fetchApi('/api/attendance/manual-punch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-module-type': currentMode
-        },
-        body: JSON.stringify({
-          empId: log.emp_id,
-          date: log.date,
-          punchIn: edit.punch_in,
-          punchOut: edit.punch_out,
-          shiftId: log.shift_id
-        })
+      await invoke('save_manual_attendance', {
+        emp_id: log.emp_id,
+        date: log.date,
+        punch_in: edit.punch_in,
+        punch_out: edit.punch_out,
+        shift_id: log.shift_id,
+        module_type: currentMode
       });
       
       toast.info(`Row Saved: ${log.emp_name}`, {
@@ -833,12 +820,8 @@ const GhostPunchesModal: React.FC<GhostPunchesModalProps> = ({
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
-      const stats = await fetchApi<any>('/api/attendance/resolve-anomalies', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ monthYear })
+      const stats = await invoke<any>('resolve_attendance_anomalies', {
+        monthYear
       });
       setAnomalyStats(stats);
       toast.success("Attendance anomalies resolved and quarantined successfully!");
@@ -963,24 +946,18 @@ const BulkEntryModal: React.FC<BulkEntryModalProps> = ({
     setIsGenerating(true);
     try {
       // Use the new heavy-lifting command
-      const res = await fetchApi<any>('/api/attendance/bulk-generate-v2', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-module-type': currentMode
+      const res = await invoke<any>('bulk_attendance_v2', {
+        fromDate,
+        toDate,
+        filters: {
+          departmentId: deptId,
+          locationId,
+          divisionId,
+          groupId,
+          categoryId,
+          designationId
         },
-        body: JSON.stringify({
-          fromDate,
-          toDate,
-          filters: {
-            departmentId: deptId,
-            locationId,
-            divisionId,
-            groupId,
-            categoryId,
-            designationId
-          }
-        })
+        moduleType: currentMode
       });
 
       if (res.status === 'started' || res.status === 'success') {

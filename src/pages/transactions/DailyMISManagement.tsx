@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Save, 
   Calculator, 
@@ -60,7 +60,7 @@ function DailyMISManagement({ currentUser }: DailyMISManagementProps) {
 
   const fetchMasterData = async () => {
     try {
-      const data = await invoke<any>('get_master_data', { moduleType: currentMode });
+      const data = await fetchApi<any>('/api/master-data/get-master-data', { method: 'POST', body: JSON.stringify({ moduleType: currentMode }) });
       setMasterData(data);
     } catch (err) {
       toast.error("Failed to load master data");

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Plus, 
   Search, 
@@ -166,10 +166,10 @@ export default function GroupDepartmentMaster() {
         const chunkSize = 200;
         for (let i = 0; i < jsonData.length; i += chunkSize) {
           const chunk = jsonData.slice(i, i + chunkSize);
-          await invoke('bulk_upload_standard_rates', {
+          await fetchApi('/api/master-data/cmd/bulkUploadStandardRates', { method: 'POST', body: JSON.stringify({
             records: chunk,
             moduleType: currentMode
-          });
+          }) });
         }
         
         toast.success(`Standard Rates bulk upload successful (${jsonData.length} records)`);
@@ -213,10 +213,10 @@ export default function GroupDepartmentMaster() {
         const chunkSize = 200;
         for (let i = 0; i < validatedData.length; i += chunkSize) {
           const chunk = validatedData.slice(i, i + chunkSize);
-          await invoke('bulk_upload_departments', {
+          await fetchApi('/api/master-data/cmd/bulkUploadDepartments', { method: 'POST', body: JSON.stringify({
             records: chunk,
             moduleType: currentMode
-          });
+          }) });
         }
         
         toast.success(`Bulk upload successful (${validatedData.length} records)`);
@@ -236,7 +236,7 @@ export default function GroupDepartmentMaster() {
 
   const confirmClearAll = async () => {
     try {
-      await invoke('clear_org_data', { moduleType: currentMode });
+      await fetchApi('/api/master-data/cmd/clearOrgData', { method: 'POST', body: JSON.stringify({ moduleType: currentMode }) });
       toast.success("All data cleared successfully");
       setIsClearAllModalOpen(false);
       fetchData();
@@ -255,15 +255,15 @@ export default function GroupDepartmentMaster() {
     
     try {
       if (type === 'rate') {
-        await invoke('master_crud', {
+        await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'standard_rates',
           operation: 'delete',
           id,
           moduleType: currentMode
-        });
+        }) });
         setStandardRates(prev => prev.filter(r => r.id !== id));
       } else {
-        await invoke('delete_org_unit', { unitType: type, id, moduleType: currentMode });
+        await fetchApi('/api/system/cmd/deleteOrgUnit', { method: 'POST', body: JSON.stringify({ unitType: type, id, moduleType: currentMode }) });
         fetchData();
       }
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} deleted successfully`);
@@ -277,14 +277,14 @@ export default function GroupDepartmentMaster() {
   const fetchData = async () => {
     try {
       const [gData, dData, hierarchy, classes, categories, shifts, employees, desigData] = await Promise.all([
-        invoke<Group[]>('master_crud', { tableName: 'groups', operation: 'list', moduleType: currentMode }),
-        invoke<Department[]>('master_crud', { tableName: 'departments', operation: 'list', moduleType: currentMode }),
-        invoke<any[]>('master_crud', { tableName: 'org_hierarchy', operation: 'list', moduleType: currentMode }),
-        invoke<any[]>('master_crud', { tableName: 'classes', operation: 'list', moduleType: currentMode }),
-        invoke<any[]>('master_crud', { tableName: 'categories', operation: 'list', moduleType: currentMode }),
-        invoke<any[]>('master_crud', { tableName: 'shifts', operation: 'list', moduleType: currentMode }),
-        invoke<any[]>('master_crud', { tableName: 'employees', operation: 'list', moduleType: currentMode }),
-        invoke<Designation[]>('master_crud', { tableName: 'designations', operation: 'list', moduleType: currentMode })
+        fetchApi<Group[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'groups', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<Department[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'departments', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'org_hierarchy', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'classes', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'categories', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'shifts', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'employees', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<Designation[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'designations', operation: 'list', moduleType: currentMode }) })
       ]);
       
       setGroups(Array.isArray(gData) ? gData.map((g: any) => {
@@ -399,7 +399,7 @@ export default function GroupDepartmentMaster() {
   const handleSyncKtoP = async () => {
     setIsSyncing(true);
     try {
-      await invoke('sync_k_to_p');
+      await fetchApi('/api/system/cmd/syncKToP', { method: 'POST' });
       toast.success("Designations and Standard Rates synced to Statutory successfully");
     } catch (error: any) {
       toast.error(error.error || "Failed to sync data to Statutory");
@@ -422,13 +422,13 @@ export default function GroupDepartmentMaster() {
     }
 
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'groups',
         operation: editingGroup ? 'update' : 'create',
         id: editingGroup?.id,
         data: groupForm,
         moduleType: currentMode
-      });
+      }) });
       toast.success(`Group ${editingGroup ? 'updated' : 'created'} successfully`);
       setIsGroupModalOpen(false);
       fetchData();
@@ -452,13 +452,13 @@ export default function GroupDepartmentMaster() {
 
     try {
       const isNew = !editingDept;
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'departments',
         operation: editingDept ? 'update' : 'create',
         id: editingDept?.id,
         data: deptForm,
         moduleType: currentMode
-      });
+      }) });
       toast.success(`Department ${editingDept ? 'updated' : 'created'} successfully`);
       
       if (isNew) {
@@ -478,8 +478,8 @@ export default function GroupDepartmentMaster() {
     setShowEmployeeList(false);
     try {
       const [settings, rates] = await Promise.all([
-        invoke<DeptSettings>('get_dept_settings', { deptId: dept.id, moduleType: currentMode }),
-        invoke<StandardRate[]>('get_dept_standard_rates', { deptId: dept.id, moduleType: currentMode })
+        fetchApi('/api/master-data/cmd/getDeptSettings', { method: 'POST', body: JSON.stringify({ deptId: dept.id, moduleType: currentMode }) }),
+        fetchApi('/api/master-data/cmd/getDeptStandardRates', { method: 'POST', body: JSON.stringify({ deptId: dept.id, moduleType: currentMode }) })
       ]);
       setDeptSettings(settings);
       setStandardRates(Array.isArray(rates) ? rates : []);
@@ -499,11 +499,11 @@ export default function GroupDepartmentMaster() {
   const saveSettings = async () => {
     if (!selectedDept) return;
     try {
-      await invoke('save_department_settings', {
+      await fetchApi('/api/system/cmd/saveDepartmentSettings', { method: 'POST', body: JSON.stringify({
         deptId: selectedDept.id,
         settings: deptSettings,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Settings saved successfully");
     } catch (error) {
       toast.error("Error saving settings");
@@ -514,13 +514,13 @@ export default function GroupDepartmentMaster() {
     e.preventDefault();
     if (!selectedDept) return;
     try {
-      await invoke('save_department_rate', {
+      await fetchApi('/api/system/cmd/saveDepartmentRate', { method: 'POST', body: JSON.stringify({
         deptId: selectedDept.id,
         rate: newRateForm,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Standard rate added");
-      const rates = await invoke<StandardRate[]>('get_dept_standard_rates', { deptId: selectedDept.id, moduleType: currentMode });
+      const rates = await fetchApi('/api/master-data/cmd/getDeptStandardRates', { method: 'POST', body: JSON.stringify({ deptId: selectedDept.id, moduleType: currentMode }) });
       setStandardRates(Array.isArray(rates) ? rates : []);
       setNewRateForm({ designation_id: 0, standard_rate: 0, manpower: 0, effective_date: '' });
     } catch (error) {

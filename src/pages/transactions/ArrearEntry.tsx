@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   RotateCcw, ArrowRight, Search, User, Calendar, 
   Calculator, Save, AlertCircle, Loader2, Info
@@ -25,11 +25,11 @@ export default function ArrearEntry({ currentUser }: { currentUser: UserType | n
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
-        const data = await invoke<any[]>('master_crud', {
+        const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'employees',
           operation: 'list',
           moduleType: currentMode
-        });
+        }) });
         setEmployees(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("Failed to fetch employees:", err);
@@ -46,11 +46,11 @@ export default function ArrearEntry({ currentUser }: { currentUser: UserType | n
 
     setIsLoading(true);
     try {
-      const data = await invoke<any>('get_employee_record', {
+      const data = await fetchApi('/api/employee/cmd/getEmployeeRecord', { method: 'POST', body: JSON.stringify({
         empId: selectedEmpId,
         month: sourceMonth,
         moduleType: currentMode
-      });
+      }) });
       if (data) {
         setOriginalData(data);
         setCorrectedData({
@@ -88,7 +88,7 @@ export default function ArrearEntry({ currentUser }: { currentUser: UserType | n
 
     setIsSaving(true);
     try {
-      await invoke('save_arrear', {
+      await fetchApi('/api/payroll/transaction/save-arrear', { method: 'POST', body: JSON.stringify({
         data: {
           emp_id: selectedEmpId,
           source_month: sourceMonth,
@@ -97,7 +97,7 @@ export default function ArrearEntry({ currentUser }: { currentUser: UserType | n
           remarks: `Arrear from ${sourceMonth} to ${targetMonth}. Attendance: ${correctedData.statutory_attendance}, Rate: ${correctedData.wage_rate}, Fixed: ${correctedData.fixed_components}`
         },
         moduleType: currentMode
-      });
+      }) });
       toast.success("Arrear entry saved successfully");
       // Reset or redirect
     } catch (err) {

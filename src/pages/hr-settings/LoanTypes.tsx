@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Plus, 
   Search, 
@@ -76,11 +76,11 @@ export default function LoanTypes() {
 
   const fetchLoanTypes = async () => {
     try {
-      const data = await invoke<LoanType[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'loan_types',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       setLoanTypes(Array.isArray(data) ? data.map(item => ({
         ...item,
         slabs: typeof item.slabs === 'string' ? JSON.parse(item.slabs) : (item.slabs || [])
@@ -93,8 +93,8 @@ export default function LoanTypes() {
   const fetchMasterData = async () => {
     try {
       const [classesData, categoriesData] = await Promise.all([
-        invoke<MasterData[]>('master_crud', { tableName: 'classes', operation: 'list', moduleType: currentMode }),
-        invoke<MasterData[]>('master_crud', { tableName: 'categories', operation: 'list', moduleType: currentMode })
+        fetchApi<MasterData[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'classes', operation: 'list', moduleType: currentMode }) }),
+        fetchApi<MasterData[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'categories', operation: 'list', moduleType: currentMode }) })
       ]);
       setClasses(Array.isArray(classesData) ? classesData : []);
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
@@ -116,13 +116,13 @@ export default function LoanTypes() {
         status: formData.status ? 1 : 0
       };
 
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'loan_types',
         operation: editingId ? 'update' : 'create',
         id: editingId,
         data: dataToSave,
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(editingId ? 'Loan type updated' : 'Loan type created');
       setIsModalOpen(false);
@@ -196,12 +196,12 @@ export default function LoanTypes() {
   const handleDelete = async (type: LoanType) => {
     if (!confirm(`Are you sure you want to delete ${type.name}?`)) return;
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'loan_types',
         operation: 'delete',
         id: type.id,
         moduleType: currentMode
-      });
+      }) });
       toast.success('Loan type deleted');
       fetchLoanTypes();
     } catch (error) {

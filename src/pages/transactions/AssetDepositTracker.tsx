@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Package, 
   Wallet, 
@@ -62,11 +62,11 @@ export default function AssetDepositTracker() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { assets, deposits } = await invoke<any>('get_asset_deposit_data');
+      const { assets, deposits } = await fetchApi('/api/employee/cmd/getAssetDepositData', { method: 'POST' });
       setAssets(assets);
       setDeposits(deposits);
       
-      const master = await invoke<any>('get_master_data', { moduleType: 'K' });
+      const master = await fetchApi<any>('/api/master-data/get-master-data', { method: 'POST', body: JSON.stringify({ moduleType: 'K' }) });
       setEmployees(master.employees || []);
     } catch (error) {
       toast.error("Failed to fetch data");
@@ -83,10 +83,10 @@ export default function AssetDepositTracker() {
     e.preventDefault();
     try {
       if (modalType === 'asset') {
-        await invoke('save_asset', { ...formData, emp_id: parseInt(selectedEmpId) });
+        await fetchApi('/api/employee/cmd/saveAsset', { method: 'POST', body: JSON.stringify({ ...formData, emp_id: parseInt(selectedEmpId) }) });
         toast.success("Asset record saved");
       } else {
-        await invoke('save_deposit', { ...formData, emp_id: parseInt(selectedEmpId) });
+        await fetchApi('/api/employee/cmd/saveDeposit', { method: 'POST', body: JSON.stringify({ ...formData, emp_id: parseInt(selectedEmpId) }) });
         toast.success("Deposit record saved");
       }
       setIsModalOpen(false);
@@ -101,7 +101,7 @@ export default function AssetDepositTracker() {
   const handleReturnAsset = async (asset: Asset) => {
     if (!confirm(`Mark "${asset.item_description}" as returned?`)) return;
     try {
-      await invoke('return_asset', { id: asset.id, status: 'Returned' });
+      await fetchApi('/api/employee/cmd/returnAsset', { method: 'POST', body: JSON.stringify({ id: asset.id, status: 'Returned' }) });
       toast.success("Asset marked as returned");
       fetchData();
     } catch (error) {
@@ -112,7 +112,7 @@ export default function AssetDepositTracker() {
   const handleLostAsset = async (asset: Asset) => {
     if (!confirm(`Mark "${asset.item_description}" as lost/damaged? This will trigger a pending deduction.`)) return;
     try {
-      await invoke('return_asset', { id: asset.id, status: 'Pending Deduction' });
+      await fetchApi('/api/employee/cmd/returnAsset', { method: 'POST', body: JSON.stringify({ id: asset.id, status: 'Pending Deduction' }) });
       toast.success("Asset marked for deduction");
       fetchData();
     } catch (error) {

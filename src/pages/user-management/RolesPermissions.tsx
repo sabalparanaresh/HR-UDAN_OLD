@@ -3,7 +3,7 @@ import { useModule } from '../../contexts/ModuleContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { fetchApi } from '../../services/apiClient';
 import { useRoles } from '../../hooks/useRoles';
 
 export const SYSTEM_PAGES = {
@@ -39,8 +39,8 @@ export default React.memo(function RolesPermissions() {
         queryKey: ['rolePermissions', selectedRoleId, currentMode],
         queryFn: async () => {
             if (!selectedRoleId) return { data: [] };
-            const res = await invoke<any>('user_crud', { operation: 'get_role_permissions', id: selectedRoleId, moduleType: currentMode });
-            return { success: true, data: res };
+            const res = await fetchApi<{ success: boolean; data: any[] }>(`/api/users/roles/${selectedRoleId}/permissions`);
+            return res;
         },
         enabled: !!selectedRoleId,
         staleTime: 1000 * 60 * 5, // 5 mins
@@ -55,11 +55,9 @@ export default React.memo(function RolesPermissions() {
 
     const updatePermsMutation = useMutation({
         mutationFn: async (perms: any[]) => {
-            await invoke('user_crud', { 
-                operation: 'update_role_permissions', 
-                id: selectedRoleId, 
-                data: { permissions: perms },
-                moduleType: currentMode
+            await fetchApi(`/api/users/roles/${selectedRoleId}/permissions`, {
+                method: 'PUT',
+                body: JSON.stringify({ permissions: perms })
             });
         },
         onSuccess: () => {

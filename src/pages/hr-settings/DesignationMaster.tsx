@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Plus, 
   Search, 
@@ -66,11 +66,11 @@ export default function DesignationMaster() {
 
   const fetchDesignations = async () => {
     try {
-      const data = await invoke<Designation[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'designations',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       setDesignations(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error("Failed to fetch designations");
@@ -109,12 +109,12 @@ export default function DesignationMaster() {
             ...item,
             status: (item.status?.toString().toLowerCase() === 'active' || item.status === 1 || item.status === '1' || item.status === true) ? 1 : 0
           }));
-          await invoke('master_crud', {
+          await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: 'designations',
             operation: 'bulk_create',
             data: chunk,
             moduleType: currentMode
-          });
+          }) });
         }
         
         toast.dismiss(loadingToast);
@@ -143,13 +143,13 @@ export default function DesignationMaster() {
     }
 
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'designations',
         operation: editingDesignation ? 'update' : 'create',
         id: editingDesignation?.id,
         data: formData,
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(`Designation ${editingDesignation ? 'updated' : 'created'} successfully`);
       setIsModalOpen(false);
@@ -162,12 +162,12 @@ export default function DesignationMaster() {
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this designation?")) return;
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'designations',
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Designation deleted successfully");
       fetchDesignations();
     } catch (error: any) {
@@ -180,11 +180,11 @@ export default function DesignationMaster() {
     if (!confirm("Are you sure you want to clear ALL designations? This action cannot be undone.")) return;
     
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'designations',
         operation: 'clear_all',
         moduleType: currentMode
-      });
+      }) });
       toast.success("All designations cleared successfully");
       fetchDesignations();
     } catch (error: any) {

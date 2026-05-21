@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import { format, subMonths } from 'date-fns';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
 import { transformChartData } from '../../utils';
@@ -50,7 +50,7 @@ function CashManagement() {
 
   const fetchTransactions = async () => {
     try {
-      const data = await invoke('get_cash_transactions', { module_type: currentMode }) as any[];
+      const data = await fetchApi(`/api/transactions/cash?moduleType=${currentMode}`, { method: 'GET' }) as any[];
       setTransactions(data);
     } catch (e) {
       console.error(e);
@@ -65,7 +65,7 @@ function CashManagement() {
     setSelectedTxn(txn);
     setPaymentInput(txn.balance > 0 ? txn.balance.toString() : '');
     try {
-      const history = await invoke('get_cash_payment_history', { transaction_id: txn.id, module_type: currentMode }) as any[];
+      const history = await fetchApi('/api/transactions/cash/history', { method: 'POST', body: JSON.stringify({ transaction_id: txn.id, module_type: currentMode }) }) as any[];
       setPaymentHistory(history);
     } catch (e) {
       console.error(e);
@@ -107,13 +107,13 @@ function CashManagement() {
     }
 
     try {
-      await invoke('add_cash_payment', { 
+      await fetchApi('/api/transactions/cash/payment', { method: 'POST', body: JSON.stringify({ 
         transaction_id: selectedTxn.id,
         amount,
         action: amount === selectedTxn.balance ? 'Full Payment' : 'Partial Payment',
         module_type: currentMode,
         user: 'Cashier'
-      });
+      }) });
       await fetchTransactions();
       closeModal();
     } catch (e) {
@@ -126,11 +126,11 @@ function CashManagement() {
     if (!selectedTxn || selectedTxn.paid_amount === 0) return;
     if (confirm("Are you sure you want to reverse the last payment?")) {
       try {
-        await invoke('reverse_cash_payment', {
+        await fetchApi('/api/transactions/cash/reverse', { method: 'POST', body: JSON.stringify({
           transaction_id: selectedTxn.id,
           module_type: currentMode,
           user: 'Cashier'
-        });
+        }) });
         await fetchTransactions();
         closeModal();
       } catch (e) {

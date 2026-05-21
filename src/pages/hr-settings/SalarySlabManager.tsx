@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Plus, 
   Trash2, 
@@ -63,11 +63,11 @@ const SalarySlabManager: React.FC = () => {
 
   const fetchSlabs = async () => {
     try {
-      const data = await invoke<any[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'salary_slabs',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       
       const processed = (Array.isArray(data) ? data : []).map(slab => {
         let components = [];
@@ -96,11 +96,11 @@ const SalarySlabManager: React.FC = () => {
 
   const fetchSalaryHeads = async () => {
     try {
-      const data = await invoke<SalaryHead[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'salary_heads',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       if (Array.isArray(data)) {
         setSalaryHeads(data);
       }
@@ -233,7 +233,7 @@ const SalarySlabManager: React.FC = () => {
   const processSave = async () => {
     try {
       if (!selectedSlab) return;
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'salary_slabs',
         operation: selectedSlab.id ? 'update' : 'create',
         id: selectedSlab.id,
@@ -244,7 +244,7 @@ const SalarySlabManager: React.FC = () => {
           components: selectedSlab.components
         },
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(`Salary slab ${selectedSlab.id ? 'updated' : 'created'} successfully ${currentMode === 'K' ? '(Auto-synced to P)' : ''}`);
       fetchSlabs();
@@ -268,7 +268,7 @@ const SalarySlabManager: React.FC = () => {
 
     if (selectedSlab.id) {
        try {
-           const respData = await invoke<any>('get_master_usage', { table: 'salary_slabs', id: selectedSlab.id, moduleType: currentMode });
+           const respData = await fetchApi('/api/system/cmd/getMasterUsage', { method: 'POST', body: JSON.stringify({ table: 'salary_slabs', id: selectedSlab.id, moduleType: currentMode }) });
            
            if (respData && respData.usageCount > 0) {
                setWarningModalProps({
@@ -294,12 +294,12 @@ const SalarySlabManager: React.FC = () => {
     if (!window.confirm('Are you sure you want to delete this slab?')) return;
 
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'salary_slabs',
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
 
       toast.success('Salary slab deleted successfully');
       fetchSlabs();
@@ -458,12 +458,12 @@ const SalarySlabManager: React.FC = () => {
         
         for (let i = 0; i < total; i += CHUNK_SIZE) {
           const chunk = slabsData.slice(i, i + CHUNK_SIZE);
-          await invoke('master_crud', {
+          await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: 'salary_slabs',
             operation: 'bulk_create',
             data: chunk,
             moduleType: currentMode
-          });
+          }) });
         }
         
         toast.success(`Bulk upload successful (${slabsData.length} records processed)`);

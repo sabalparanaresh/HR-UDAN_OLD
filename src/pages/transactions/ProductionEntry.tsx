@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, CheckCircle, Save, X, ClipboardList } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import PayrollPostingModal from './PayrollPostingModal';
 
 function ProductionEntryList({ onAddNew, onEdit, canWrite }: { onAddNew: () => void, onEdit: (id: string) => void, canWrite: boolean }) {
@@ -14,7 +14,11 @@ function ProductionEntryList({ onAddNew, onEdit, canWrite }: { onAddNew: () => v
     const { data: result, isLoading } = useQuery({
         queryKey: ['productionInvoices', page, search],
         queryFn: async () => {
-            const result = await invoke<any>('production_entry_crud', { operation: 'list', page: String(page), limit: '50', search });
+            const url = new URL(window.location.origin + '/api/transactions/production-entry');
+            url.searchParams.set('page', String(page));
+            url.searchParams.set('limit', '50');
+            if (search) url.searchParams.set('search', search);
+            const result = await fetchApi(url.pathname + url.search, { method: 'GET' });
             if (!result.success) throw new Error(result.error || 'Fetch failed');
             return result;
         }
@@ -22,7 +26,7 @@ function ProductionEntryList({ onAddNew, onEdit, canWrite }: { onAddNew: () => v
 
     const updateStatusMutation = useMutation({
         mutationFn: async ({ id, status }: { id: string, status: string }) => {
-            const result = await invoke<any>('production_entry_crud', { operation: 'update_status', id, data: { status } });
+            const result = await fetchApi(`/api/transactions/production-entry/\${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
             if (!result.success) throw new Error(result.error || 'Failed to update status');
             return result;
         },
@@ -33,7 +37,7 @@ function ProductionEntryList({ onAddNew, onEdit, canWrite }: { onAddNew: () => v
 
     const deleteMutation = useMutation({
         mutationFn: async (id: string) => {
-            const result = await invoke<any>('production_entry_crud', { operation: 'delete', id });
+            const result = await fetchApi(`/api/transactions/production-entry/\${id}`, { method: 'DELETE' });
             if (!result.success) throw new Error(result.error || 'Failed to delete');
             return result;
         },
@@ -179,7 +183,7 @@ function ProductionEntryForm({ invoiceId, onCancel, canWrite }: { invoiceId: str
     const { data: employees } = useQuery({
         queryKey: ['employeesList'],
         queryFn: async () => {
-            const res = await invoke<any>('get_master_data', { moduleType: 'K' });
+            const res = await fetchApi<any>('/api/master-data/get-master-data', { method: 'POST', body: JSON.stringify({ moduleType: 'K' }) });
             return res.employees || [];
         }
     });
@@ -188,7 +192,7 @@ function ProductionEntryForm({ invoiceId, onCancel, canWrite }: { invoiceId: str
         queryKey: ['productionInvoice', invoiceId],
         queryFn: async () => {
             if (!invoiceId) return null;
-            const result = await invoke<any>('production_entry_crud', { operation: 'get', id: invoiceId });
+            const result = await fetchApi(`/api/transactions/production-entry/\${invoiceId}`, { method: 'GET' });
             if (!result.success) throw new Error(result.error || 'Fetch failed');
             return result.data;
         },
@@ -208,7 +212,7 @@ function ProductionEntryForm({ invoiceId, onCancel, canWrite }: { invoiceId: str
         queryKey: ['productionConfig', empId],
         queryFn: async () => {
             if (!empId) return null;
-            const result = await invoke<any>('production_entry_crud', { operation: 'config_details', emp_id: String(empId) });
+            const result = await fetchApi(`/api/transactions/production-entry/config/details?emp_id=\${empId}`, { method: 'GET' });
             if (!result.success) throw new Error(result.error || 'Fetch failed');
             return result;
         },
@@ -247,7 +251,7 @@ function ProductionEntryForm({ invoiceId, onCancel, canWrite }: { invoiceId: str
             if (key === 'head_id' || key === 'quantity') {
                 const effectiveDate = monthYear + '-01';
                 try {
-                    const rData = await invoke<any>('production_entry_crud', { operation: 'calculate_rate', head_id: d[index].head_id, quantity: d[index].quantity, date: effectiveDate });
+                    const rData = await fetchApi('/api/transactions/production-entry/calculate-rate', { method: 'POST', body: JSON.stringify({ head_id: d[index].head_id, quantity: d[index].quantity, date: effectiveDate }) });
                     if (rData.success) {
                         d[index].rate = rData.data.rate;
                         d[index].amount = rData.data.amount;
@@ -265,11 +269,11 @@ function ProductionEntryForm({ invoiceId, onCancel, canWrite }: { invoiceId: str
 
     const saveMutation = useMutation({
         mutationFn: async () => {
-            const operation = invoiceId ? 'update' : 'create';
-            const result = await invoke<any>('production_entry_crud', { 
-                operation, 
-                id: invoiceId, 
-                data: { emp_id: Number(empId), month_year: monthYear, details } 
+            const isUpdate = !!invoiceId;
+            const payload = { emp_id: Number(empId), month_year: monthYear, details };
+            const result = await fetchApi(`/api/transactions/production-entry\${isUpdate ? '/' + invoiceId : ''}`, { 
+                method: isUpdate ? 'PUT' : 'POST', 
+                body: JSON.stringify(payload) 
             });
             if (!result.success) throw new Error(result.error || 'Failed to save');
             return result;

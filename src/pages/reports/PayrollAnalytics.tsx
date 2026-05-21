@@ -3,7 +3,7 @@ import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Users, ShieldAlert, MonitorPlay, BarChart2, Edit3, Save, X, Activity, Clock, AlertTriangle, LayoutDashboard, Database, TrendingUp, DollarSign } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import ReactGridLayout, { Responsive as ResponsiveGridLayout, Layout } from 'react-grid-layout';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
@@ -66,7 +66,7 @@ function PayrollAnalytics({ currentUser }: { currentUser: any }) {
     setLoading(true);
     activeRequest.current = true;
     try {
-      const resp = await invoke('get_payroll_analytics', { moduleType: currentMode, force_refresh: force });
+      const resp = await fetchApi('/api/reports/payroll-analytics', { method: 'POST', body: JSON.stringify({ moduleType: currentMode, force_refresh: force }) });
       if (!isCancelled.value) setData(resp);
     } catch (err) {
       if (!isCancelled.value) console.error(err);

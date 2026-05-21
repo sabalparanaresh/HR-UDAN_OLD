@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as XLSX from '../../utils/xlsx';
 import { 
@@ -53,11 +53,11 @@ const MasterTab = ({
 
   const fetchItems = async () => {
     try {
-      const data = await invoke<MasterItem[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: apiPath,
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       setItems(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error(`Failed to fetch ${title}s`);
@@ -71,13 +71,13 @@ const MasterTab = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: apiPath,
         operation: editingItem ? 'update' : 'create',
         id: editingItem?.id,
         data: formData,
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(`${title} ${editingItem ? 'updated' : 'created'} successfully`);
       setIsModalOpen(false);
@@ -92,12 +92,12 @@ const MasterTab = ({
   const handleDelete = async (id: number) => {
     if (!confirm(`Are you sure you want to delete this ${title}?`)) return;
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: apiPath,
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
       toast.success(`${title} deleted successfully`);
       fetchItems();
     } catch (error) {
@@ -133,12 +133,12 @@ const MasterTab = ({
             ...item,
             status: (item.status?.toString().toLowerCase() === 'active' || item.status === 1 || item.status === '1' || item.status === true) ? 1 : 0
           }));
-          await invoke('master_crud', {
+          await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: apiPath,
             operation: 'bulk_create',
             data: chunk,
             moduleType: currentMode
-          });
+          }) });
         }
         
         toast.dismiss(loadingToast);

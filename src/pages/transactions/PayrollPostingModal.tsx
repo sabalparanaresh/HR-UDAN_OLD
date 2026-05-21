@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Check } from 'lucide-react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 
 export default function PayrollPostingModal({ invoiceId, onCancel }: { invoiceId: string, onCancel: () => void }) {
     const queryClient = useQueryClient();
@@ -9,7 +9,7 @@ export default function PayrollPostingModal({ invoiceId, onCancel }: { invoiceId
     const { data: result, isLoading } = useQuery({
         queryKey: ['productionInvoicePosting', invoiceId],
         queryFn: async () => {
-             const result = await invoke<any>('production_entry_crud', { operation: 'get', id: invoiceId });
+             const result = await fetchApi(`/api/transactions/production-entry/\${invoiceId}`, { method: 'GET' });
              if (!result.success) throw new Error(result.error || 'Fetch failed');
              return result.data;
         }
@@ -17,7 +17,7 @@ export default function PayrollPostingModal({ invoiceId, onCancel }: { invoiceId
 
     const updateStatusMutation = useMutation({
         mutationFn: async ({ id, status }: { id: string, status: string }) => {
-            const result = await invoke<any>('production_entry_crud', { operation: 'update_status', id, data: { status } });
+            const result = await fetchApi(`/api/transactions/production-entry/\${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
             if (!result.success) throw new Error(result.error || 'Failed to update status');
             return result;
         },

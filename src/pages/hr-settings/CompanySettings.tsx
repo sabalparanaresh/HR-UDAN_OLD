@@ -35,7 +35,7 @@ import { EmployeeSearchSelect } from '../../components/form/EmployeeSearchSelect
 
 import { usePermission } from '../../hooks/useRBAC';
 import { useModule } from '../../contexts/ModuleContext';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -157,26 +157,26 @@ export default function CompanySettings({ currentUser }: CompanySettingsProps) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const banksData = await invoke('master_crud', {
+        const banksData = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           table_name: 'banks',
           operation: 'list',
           module_type: currentMode
-        }) as any[];
+        }) }) as any[];
         setMasterBanks(banksData);
 
-        const empsData = await invoke('master_crud', {
+        const empsData = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           table_name: 'employees',
           operation: 'list',
           module_type: currentMode
-        }) as any[];
+        }) }) as any[];
         setEmployees(empsData);
 
         if (currentMode === 'K') {
-          const headsData = await invoke('master_crud', {
+          const headsData = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             table_name: 'salary_heads',
             operation: 'list',
             module_type: currentMode
-          }) as any[];
+          }) }) as any[];
           setSalaryHeads(headsData);
         }
       } catch (err) {
@@ -257,7 +257,7 @@ export default function CompanySettings({ currentUser }: CompanySettingsProps) {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const data = await invoke('get_company_config', { module_type: currentMode }) as any;
+        const data = await fetchApi<any>('/api/config/company', { headers: { 'x-module-type': currentMode } });
         if (data) {
           Object.keys(data).forEach(key => {
             const val = data[key];
@@ -283,7 +283,7 @@ export default function CompanySettings({ currentUser }: CompanySettingsProps) {
         }
 
         if (currentMode === 'K') {
-          const payrollRules = await invoke<any>('get_payroll_rules');
+          const payrollRules = await fetchApi<any>('/api/config/payroll-rules', { headers: { 'x-module-type': currentMode } });
           if (payrollRules && payrollRules.k_salary_calculation_source) {
             setValue('k_salary_calculation_source', payrollRules.k_salary_calculation_source);
           }
@@ -302,13 +302,18 @@ export default function CompanySettings({ currentUser }: CompanySettingsProps) {
     try {
       console.log("Saving Company Config:", data);
       
-      await invoke('save_company_config', {
-        config: data,
-        module_type: currentMode
+      await fetchApi('/api/config/company', {
+        method: 'POST',
+        headers: { 'x-module-type': currentMode },
+        body: JSON.stringify({ config: data })
       });
 
       if (currentMode === 'K' && data.k_salary_calculation_source) {
-        await invoke('update_payroll_rules', { rules: { k_salary_calculation_source: data.k_salary_calculation_source } });
+        await fetchApi('/api/config/payroll-rules', {
+          method: 'POST',
+          headers: { 'x-module-type': currentMode },
+          body: JSON.stringify({ rules: { k_salary_calculation_source: data.k_salary_calculation_source } })
+        });
       }
 
       toast.success(`Configuration saved successfully!`, {

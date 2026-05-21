@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Plus, 
   Search, 
@@ -72,11 +72,11 @@ export default function HolidayMaster() {
 
   const fetchHolidays = async () => {
     try {
-      const data = await invoke<Holiday[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'holidays',
         operation: 'list',
         moduleType: currentMode
-      });
+      }) });
       setHolidays(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error("Failed to fetch holidays");
@@ -90,13 +90,13 @@ export default function HolidayMaster() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'holidays',
         operation: editingHoliday ? 'update' : 'create',
         id: editingHoliday?.id,
         data: formData,
         moduleType: currentMode
-      });
+      }) });
 
       toast.success(`Holiday ${editingHoliday ? 'updated' : 'created'} successfully`);
       setIsModalOpen(false);
@@ -109,12 +109,12 @@ export default function HolidayMaster() {
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this holiday?")) return;
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'holidays',
         operation: 'delete',
         id,
         moduleType: currentMode
-      });
+      }) });
       toast.success("Holiday deleted successfully");
       fetchHolidays();
     } catch (error) {
@@ -146,12 +146,12 @@ export default function HolidayMaster() {
         
         for (let i = 0; i < jsonData.length; i += chunkSize) {
           const chunk = jsonData.slice(i, i + chunkSize);
-          await invoke('master_crud', {
+          await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: 'holidays',
             operation: 'bulk_create',
             data: chunk,
             moduleType: currentMode
-          });
+          }) });
         }
         
         toast.success(`Bulk upload successful (${jsonData.length} records)`);

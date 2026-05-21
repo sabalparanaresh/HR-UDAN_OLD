@@ -3,7 +3,7 @@ import ReactECharts from 'echarts-for-react';
 import { RefreshCw, Users, ShieldAlert, MonitorPlay, BarChart2, Edit3, Save, X, LayoutDashboard, ChevronRight } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import ReactGridLayout, { Responsive as ResponsiveGridLayout, Layout } from 'react-grid-layout';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import 'react-grid-layout/css/styles.css';
@@ -82,7 +82,7 @@ function DashboardEngine({ currentUser }: { currentUser: any }) {
     try {
       // Add a timeout using Promise.race
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 10000));
-      const fetchPromise = invoke('get_dashboard_data', { moduleType: currentMode, force_refresh: force });
+      const fetchPromise = fetchApi('/api/system/cmd/getDashboardData', { method: 'POST', body: JSON.stringify({ moduleType: currentMode, force_refresh: force }) });
       
       const resp = await Promise.race([fetchPromise, timeoutPromise]);
       if (!isCancelled.value) setData(resp);

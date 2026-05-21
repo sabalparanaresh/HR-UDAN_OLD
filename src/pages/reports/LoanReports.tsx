@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   Search, 
   FileText,
@@ -53,7 +53,7 @@ export default function LoanReports() {
   const fetchReports = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<LoanReport[]>('get_loan_reports', { moduleType: currentMode });
+      const data = await fetchApi<LoanReport[]>('/api/loans/reports', { headers: { 'x-module-type': currentMode } });
       setReports(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error('Failed to fetch reports');

@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { useModule } from '../../contexts/ModuleContext';
@@ -57,12 +57,12 @@ export default function LeaveSettings() {
   const fetchConfigs = async () => {
     setIsLoading(true);
     try {
-      const data = await invoke<LeaveConfig[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'leave_configurations',
         operation: 'list',
         moduleType: currentMode,
         filters: null
-      });
+      }) });
       // Sort by priority
       const sortedData = [...data].sort((a, b) => a.adjustment_priority - b.adjustment_priority);
       setConfigs(sortedData);
@@ -76,7 +76,7 @@ export default function LeaveSettings() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'leave_configurations',
         operation: editingConfig ? 'update' : 'create',
         id: editingConfig?.id,
@@ -86,7 +86,7 @@ export default function LeaveSettings() {
         },
         moduleType: currentMode,
         filters: null
-      });
+      }) });
 
       toast.success(`Leave configuration ${editingConfig ? 'updated' : 'created'} successfully`);
       setIsModalOpen(false);
@@ -101,13 +101,13 @@ export default function LeaveSettings() {
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this configuration?")) return;
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: 'leave_configurations',
         operation: 'delete',
         id,
         moduleType: currentMode,
         filters: null
-      });
+      }) });
       toast.success("Configuration deleted");
       fetchConfigs();
     } catch (err) {
@@ -144,22 +144,22 @@ export default function LeaveSettings() {
     try {
       // Update both in DB
       await Promise.all([
-        invoke('master_crud', {
+        fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'leave_configurations',
           operation: 'update',
           id: newConfigs[index].id,
           data: { adjustment_priority: newConfigs[index].adjustment_priority },
           moduleType: currentMode,
           filters: null
-        }),
-        invoke('master_crud', {
+        }) }),
+        fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'leave_configurations',
           operation: 'update',
           id: newConfigs[targetIndex].id,
           data: { adjustment_priority: newConfigs[targetIndex].adjustment_priority },
           moduleType: currentMode,
           filters: null
-        })
+        }) })
       ]);
       fetchConfigs();
     } catch (err) {

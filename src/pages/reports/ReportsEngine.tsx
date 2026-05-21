@@ -30,7 +30,7 @@ import {
 } from 'ag-grid-community';
 import { useModule } from '../../contexts/ModuleContext';
 import { withModuleGuard } from '../../components/layout/ModuleGuard';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { toast } from 'sonner';
 
 import { ReportFilterEngine } from '../../components/reports/ReportFilterEngine';
@@ -123,7 +123,7 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
     fetchSchedules();
     
     if (currentMode === 'K' && !isConnected) {
-      invoke('master_crud', { operation: 'get_last_sync_time' })
+      fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ operation: 'get_last_sync_time' }) })
         .then((res: any) => setLastSyncTime(res?.timestamp || 'Unknown'))
         .catch(() => setLastSyncTime('Unknown'));
     }
@@ -133,7 +133,7 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
 
   const fetchTemplates = async () => {
     try {
-      const resp = await invoke('get_report_templates', { module_type: currentMode }) as any[];
+      const resp = await fetchApi('/api/system/cmd/getReportTemplates', { method: 'POST', body: JSON.stringify({ module_type: currentMode }) }) as any[];
       setTemplates(resp);
     } catch (e) {
       console.error(e);
@@ -142,7 +142,7 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
 
   const fetchSchedules = async () => {
     try {
-      const resp = await invoke('get_report_schedules', { module_type: currentMode }) as any[];
+      const resp = await fetchApi('/api/system/cmd/getReportSchedules', { method: 'POST', body: JSON.stringify({ module_type: currentMode }) }) as any[];
       setSchedules(resp);
     } catch (e) {
       console.error(e);
@@ -155,13 +155,13 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
       return;
     }
     try {
-      await invoke('create_report_schedule', {
+      await fetchApi('/api/system/cmd/createReportSchedule', { method: 'POST', body: JSON.stringify({
         name: `${activeTemplate.name} Schedule`,
         template_id: activeTemplate.id,
         module_type: currentMode,
         schedule_cron: scheduleCron,
         user: currentUser?.username || 'system'
-      });
+      }) });
       toast.success("Schedule created successfully");
       setIsScheduleModalOpen(false);
       fetchSchedules();
@@ -172,17 +172,17 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
 
   const toggleSchedule = async (id: string, e: any) => {
     e.stopPropagation();
-    try { await invoke('toggle_report_schedule', { id, module_type: currentMode }); fetchSchedules(); } catch(e){}
+    try { await fetchApi('/api/system/cmd/toggleReportSchedule', { method: 'POST', body: JSON.stringify({ id, module_type: currentMode }) }); fetchSchedules(); } catch(e){}
   };
 
   const deleteSchedule = async (id: string, e: any) => {
     e.stopPropagation();
-    try { await invoke('delete_report_schedule', { id, module_type: currentMode }); fetchSchedules(); } catch(e){}
+    try { await fetchApi('/api/system/cmd/deleteReportSchedule', { method: 'POST', body: JSON.stringify({ id, module_type: currentMode }) }); fetchSchedules(); } catch(e){}
   };
   
   const openHistory = async (id: string) => {
     try {
-      const resp = await invoke('get_report_schedule_history', { schedule_id: id, module_type: currentMode }) as any[];
+      const resp = await fetchApi('/api/system/cmd/getReportScheduleHistory', { method: 'POST', body: JSON.stringify({ schedule_id: id, module_type: currentMode }) }) as any[];
       setScheduleHistory(resp);
       setActiveScheduleId(id);
       setIsHistoryModalOpen(true);
@@ -213,12 +213,12 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
     }
     setLoading(true);
     try {
-      await invoke('save_report_snapshot', {
+      await fetchApi('/api/system/cmd/saveReportSnapshot', { method: 'POST', body: JSON.stringify({
         template_id: activeTemplate?.id || `TEMP-${baseTable}`,
         module_type: currentMode,
         base_table: baseTable,
         data: null
-      });
+      }) });
       toast.success("Snapshot saved successfully!");
     } catch (e: any) {
       toast.error(e.message || "Failed to save snapshot");
@@ -261,18 +261,18 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
           let res;
           if (!isConnected && currentMode === 'K') {
              try {
-               const snapRes = await invoke('get_report_snapshots', { template_id: 'SYSTEM_P_SYNC', module_type: 'P' }) as any[];
+               const snapRes = await fetchApi('/api/system/cmd/getReportSnapshots', { method: 'POST', body: JSON.stringify({ template_id: 'SYSTEM_P_SYNC', module_type: 'P' }) }) as any[];
                if (snapRes && snapRes.length > 0) {
-                  const snapData = await invoke('get_report_snapshot_data', { snapshot_id: snapRes[0].id, module_type: 'P' }) as any[];
+                  const snapData = await fetchApi('/api/system/cmd/getReportSnapshotData', { method: 'POST', body: JSON.stringify({ snapshot_id: snapRes[0].id, module_type: 'P' }) }) as any[];
                   res = { data: snapData.slice(offset, offset + limit), total: snapData.length };
                } else {
-                 res = await invoke('execute_report_query', req) as any;
+                 res = await fetchApi('/api/system/cmd/executeReportQuery', { method: 'POST', body: JSON.stringify(req) }) as any;
                }
              } catch(e) {
-                 res = await invoke('execute_report_query', req) as any;
+                 res = await fetchApi('/api/system/cmd/executeReportQuery', { method: 'POST', body: JSON.stringify(req) }) as any;
              }
           } else {
-            res = await invoke('execute_report_query', req) as any;
+            res = await fetchApi('/api/system/cmd/executeReportQuery', { method: 'POST', body: JSON.stringify(req) }) as any;
           }
 
           setTotalRows(res?.total || 0);
@@ -321,7 +321,7 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
         pivotMode: gridRef.current?.api?.isPivotMode()
       };
 
-      await invoke('save_report_template', {
+      await fetchApi('/api/system/cmd/saveReportTemplate', { method: 'POST', body: JSON.stringify({
         name: saveTemplateName,
         description: saveTemplateDesc,
         base_table: baseTable,
@@ -332,7 +332,7 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
         shared_with_roles: saveTemplateRoles,
         module_type: currentMode,
         user: currentUser?.username || 'system'
-      });
+      }) });
       toast.success("Template saved");
       setIsSaveModalOpen(false);
       fetchTemplates();
@@ -408,7 +408,7 @@ function ReportsEngine({ currentUser }: { currentUser: any }) {
         author: currentUser?.username || 'system'
       };
       
-      const res = await invoke('generate_enterprise_excel', req) as any;
+      const res = await fetchApi('/api/system/cmd/generateEnterpriseExcel', { method: 'POST', body: JSON.stringify(req) }) as any;
       
       if (res && res.status === 'success' && res.base64) {
         const byteCharacters = atob(res.base64);

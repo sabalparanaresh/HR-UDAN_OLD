@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { ShieldCheck, Calendar, User, FileText, Search, Activity, Download } from 'lucide-react';
 import { toast } from 'sonner';
@@ -38,7 +38,7 @@ export default function AuditHistory() {
         author: "system"
       };
       
-      const res: any = await invoke('execute_report_query', req);
+      const res: any = await fetchApi('/api/system/cmd/executeReportQuery', { method: 'POST', body: JSON.stringify(req) });
       setLogs(res.data || []);
     } catch (err: any) {
       console.error(err);

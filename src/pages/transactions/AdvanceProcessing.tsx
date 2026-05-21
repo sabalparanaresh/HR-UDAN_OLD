@@ -9,7 +9,7 @@ import {
   AlertCircle,
   X
 } from 'lucide-react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -104,11 +104,11 @@ export default function AdvanceProcessing({ currentUser }: { currentUser: any })
       const tables = ['locations', 'divisions', 'departments', 'groups', 'classes', 'categories', 'designations'];
       const results: any = {};
       for (const table of tables) {
-        results[table] = await invoke('master_crud', {
+        results[table] = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: table,
           operation: 'list',
           moduleType: 'K'
-        });
+        }) });
       }
       setMasters(results);
     } catch (e) {
