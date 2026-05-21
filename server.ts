@@ -3,14 +3,25 @@ import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
-import { startLegacyServer } from './src-server/legacyRouter.js';
+import { employeeRouter } from './src-server/domains/employee/routes.js';
+import { attendanceRouter } from './src-server/domains/attendance/routes.js';
+import { masterDataRouter } from './src-server/domains/master-data/routes.js';
+import { bootstrapDatabase } from './src-server/db/bootstrap.js';
+import { rpcRouter, setupLegacyEventStream } from './src-server/domains/rpc/routes.js';
 import { runPostSetupMigrations } from './src-server/db/migrations.js';
 // Domain routes
 
+import { systemRouter } from './src-server/domains/system/routes.js';
+import { configRouter } from './src-server/domains/config/routes.js';
+import { authRouter } from './src-server/domains/auth/routes.js';
 import { usermanagementRouter } from './src-server/domains/user-management/routes.js';
 import { pieceRateRouter } from './src-server/domains/piece-rate/routes.js';
 import { syncengineRouter } from './src-server/domains/sync-engine/routes.js';
-import { productionEntryRouter } from './src-server/domains/transactions/production-entry/routes.js';
+import { loansRouter } from './src-server/domains/loans/routes.js';
+import { canteenRouter } from './src-server/domains/canteen/routes.js';
+import { bankingRouter } from './src-server/domains/banking/routes.js';
+import { payrollRouter } from './src-server/domains/payroll/routes.js';
+import { transactionsRouter } from './src-server/domains/transactions/routes.js';
 
 const app = express();
 const PORT = 3000;
@@ -28,7 +39,8 @@ app.use((err: any, req: any, res: any, next: any) => {
 });
 
 // Start Legacy Subsystems and DB
-startLegacyServer(app, false).then(({ primaryDb, statutoryDb, dbState, setupRoutes, server }: any) => {
+bootstrapDatabase().then(({ primaryDb, statutoryDb, dbState }: any) => {
+  setupLegacyEventStream(app);
   // Inject DBs
   app.use('/api', (req, res, next) => {
     (req as any).primaryDb = primaryDb;
@@ -38,11 +50,21 @@ startLegacyServer(app, false).then(({ primaryDb, statutoryDb, dbState, setupRout
   });
 
   // Mount Domain Routers (New layered architecture)
-
+  app.use('/api/employees', employeeRouter);
+  app.use('/api/attendance', attendanceRouter);
+  app.use('/api/master-data', masterDataRouter);
+  app.use('/', rpcRouter);
+  app.use('/api/system', systemRouter);
+  app.use('/api/config', configRouter);
+  app.use('/api/auth', authRouter);
   app.use('/api/users', usermanagementRouter);
   app.use('/api/sync', syncengineRouter);
   app.use('/api/salary-settings/piece-rate', pieceRateRouter);
-  app.use('/api/transactions/production-entry', productionEntryRouter);
+  app.use('/api/transactions', transactionsRouter);
+  app.use('/api/loans', loansRouter);
+  app.use('/api/canteen', canteenRouter);
+  app.use('/api/banking', bankingRouter);
+  app.use('/api/payroll', payrollRouter);
   
   // Catch-all for unhandled API routes
   app.post('/api/ping', (req, res) => {
