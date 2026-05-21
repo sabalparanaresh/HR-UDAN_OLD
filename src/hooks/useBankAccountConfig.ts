@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../services/apiClient';
 import { useModule } from '../contexts/ModuleContext';
 
 export interface BankAccountConfig {
@@ -22,7 +22,7 @@ export function useBankAccountConfig(bankName?: string) {
     let active = true;
     const fetchConfig = async () => {
       try {
-        const configData: any = await invoke('get_company_config', { module_type: currentMode });
+        const configData = await fetchApi<any>('/api/config/company', { headers: { 'x-module-type': currentMode } });
         if (active && configData && configData.bank_accounts) {
           setConfigs(configData.bank_accounts);
         }

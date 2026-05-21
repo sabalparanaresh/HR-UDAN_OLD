@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FilterDTO, FilterDTOSchema } from '../../types/ReportFilters';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { Filter, Calendar, Users, Briefcase, Play, Factory } from 'lucide-react';
 
@@ -56,9 +56,9 @@ export function ReportFilterEngine({
       setLoading(true);
       try {
         const [depts, desigs, divs] = await Promise.all([
-          invoke('master_crud', { tableName: 'departments', operation: 'list', moduleType: currentMode }).catch(() => []),
-          invoke('master_crud', { tableName: 'designations', operation: 'list', moduleType: currentMode }).catch(() => []),
-          invoke('master_crud', { tableName: 'divisions', operation: 'list', moduleType: currentMode }).catch(() => [])
+          fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'departments', operation: 'list', moduleType: currentMode }) }).catch(() => []),
+          fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'designations', operation: 'list', moduleType: currentMode }) }).catch(() => []),
+          fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'divisions', operation: 'list', moduleType: currentMode }) }).catch(() => [])
         ]) as [any[], any[], any[]];
         
         setMasters({

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../services/apiClient';
 import { toast } from 'sonner';
 
 export interface DailyMISEntry {
@@ -24,11 +24,11 @@ export function useDailyMIS(date: string) {
     if (!date) return;
     setLoading(true);
     try {
-      const data = await invoke<DailyMISEntry[]>('transaction_crud', {
+      const data = await fetchApi<DailyMISEntry[]>('/api/payroll/transaction/crud', { method: 'POST', body: JSON.stringify({
         operation: 'list',
         tableName: 'daily_mis_entries',
         filters: { date }
-      });
+      }) });
       setEntries(data || []);
     } catch (error: any) {
       toast.error('Failed to fetch MIS entries: ' + error);
@@ -44,10 +44,10 @@ export function useDailyMIS(date: string) {
   const saveBatch = async (batch: DailyMISEntry[]) => {
     setLoading(true);
     try {
-      await invoke('save_daily_mis_batch', {
+      await fetchApi('/api/payroll/transaction/save-daily-mis-batch', { method: 'POST', body: JSON.stringify({
         date,
         entries: batch
-      });
+      }) });
       toast.success('Batch saved successfully');
       await fetchEntries();
     } catch (error: any) {

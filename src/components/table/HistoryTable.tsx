@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { 
   useReactTable, getCoreRowModel, flexRender, ColumnDef 
 } from '@tanstack/react-table';
@@ -54,7 +54,7 @@ export function HistoryTable({ moduleType }: HistoryTableProps) {
   const saveEdit = async () => {
     if (!editingRow) return;
     try {
-      await invoke('update_transaction', {
+      await fetchApi('/api/payroll/transaction/update', { method: 'POST', body: JSON.stringify({
         targetModule: moduleType,
         id: editingRow.id,
         updateData: {
@@ -62,7 +62,7 @@ export function HistoryTable({ moduleType }: HistoryTableProps) {
           date: editDate || editingRow.date
         },
         moduleType: currentMode
-      });
+      }) });
       toast.success("Transaction updated");
       setEditingRow(null);
       fetchHistory();
@@ -75,7 +75,7 @@ export function HistoryTable({ moduleType }: HistoryTableProps) {
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        const res: any = await invoke('get_master_data', { moduleType: currentMode });
+        const res: any = await fetchApi('/api/master-data/get-master-data', { method: 'POST', body: JSON.stringify({ moduleType: currentMode }) });
         setMasterData(res);
       } catch (e: any) {
         console.error("Failed to load master data", e);
@@ -87,7 +87,7 @@ export function HistoryTable({ moduleType }: HistoryTableProps) {
   const fetchHistory = async () => {
     setIsLoading(true);
     try {
-      const res = await invoke<any>('get_transaction_history', {
+      const res = await fetchApi<any>('/api/payroll/transaction/history', { method: 'POST', body: JSON.stringify({
         targetModule: moduleType,
         startDate,
         endDate,
@@ -103,7 +103,7 @@ export function HistoryTable({ moduleType }: HistoryTableProps) {
         limit: pageSize,
         offset: page * pageSize,
         moduleType: currentMode
-      });
+      }) });
       setData(res.data);
       setTotal(res.total);
       setSelectedRowIds(new Set()); // Reset selections
@@ -138,11 +138,11 @@ export function HistoryTable({ moduleType }: HistoryTableProps) {
     if (!window.confirm(`Delete ${selectedRowIds.size} transactions?`)) return;
     
     try {
-      await invoke('bulk_delete_transactions', {
+      await fetchApi('/api/payroll/transaction/bulk-delete', { method: 'POST', body: JSON.stringify({
         targetModule: moduleType,
         ids: Array.from(selectedRowIds),
         moduleType: currentMode
-      });
+      }) });
       toast.success("Transactions deleted");
       fetchHistory();
     } catch (e: any) {
@@ -164,11 +164,11 @@ export function HistoryTable({ moduleType }: HistoryTableProps) {
     }
     if (!window.confirm("Delete this transaction?")) return;
     try {
-      await invoke('bulk_delete_transactions', {
+      await fetchApi('/api/payroll/transaction/bulk-delete', { method: 'POST', body: JSON.stringify({
         targetModule: moduleType,
         ids: [row.id],
         moduleType: currentMode
-      });
+      }) });
       toast.success("Transaction deleted");
       fetchHistory();
     } catch (e: any) {

@@ -23,7 +23,7 @@ import * as XLSX from '../../utils/xlsx';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { Pagination } from '../common/Pagination';
 
@@ -277,12 +277,12 @@ export default function MasterPage({ title, apiEndpoint, icon, moduleCode, hideH
         apiFilters[parentFilter.key] = parentFilter.value;
       }
 
-      const data = await invoke<MasterItem[]>('master_crud', {
+      const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: apiEndpoint,
         operation: 'list',
         moduleType: currentMode,
         filters: Object.keys(apiFilters).length > 0 ? apiFilters : null
-      });
+      }) });
       setItems(Array.isArray(data) ? data : []);
     } catch (error) {
       toast.error(`Failed to fetch ${title}`);
@@ -297,12 +297,12 @@ export default function MasterPage({ title, apiEndpoint, icon, moduleCode, hideH
         'locations', 'divisions', 'classes', 'categories', 'groups', 'departments'
       ];
       const results = await Promise.all(
-        endpoints.map(ep => invoke<any[]>('master_crud', {
+        endpoints.map(ep => fetchApi<any[]>('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: ep,
           operation: 'list',
           moduleType: currentMode,
           filters: null
-        }))
+        }) }))
       );
       setMasterData({
         locations: results[0],
@@ -343,7 +343,7 @@ export default function MasterPage({ title, apiEndpoint, icon, moduleCode, hideH
     }
 
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: apiEndpoint,
         operation: isEditing ? 'update' : 'create',
         id: isEditing,
@@ -353,7 +353,7 @@ export default function MasterPage({ title, apiEndpoint, icon, moduleCode, hideH
         },
         moduleType: currentMode,
         filters: null
-      });
+      }) });
 
       toast.success(isEditing ? "Record updated" : "Record created");
       resetForm();
@@ -386,13 +386,13 @@ export default function MasterPage({ title, apiEndpoint, icon, moduleCode, hideH
 
   const handleDelete = async (id: number) => {
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: apiEndpoint,
         operation: 'delete',
         id,
         moduleType: currentMode,
         filters: null
-      });
+      }) });
       toast.success("Record deleted");
       setDeleteConfirmId(null);
       fetchItems();
@@ -453,13 +453,13 @@ export default function MasterPage({ title, apiEndpoint, icon, moduleCode, hideH
         setIsLoading(true);
         // Batch requests with Promise.allSettled for robust feedback
         const results = await Promise.allSettled(
-          records.map(record => invoke('master_crud', {
+          records.map(record => fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: apiEndpoint,
             operation: 'create',
             data: record,
             moduleType: currentMode,
             filters: null
-          }))
+          }) }))
         );
 
         const succeeded = results.filter(r => r.status === 'fulfilled').length;
@@ -489,11 +489,11 @@ export default function MasterPage({ title, apiEndpoint, icon, moduleCode, hideH
     if (!confirm(`Are you sure you want to clear ALL ${title} records? This action cannot be undone.`)) return;
     
     try {
-      await invoke('master_crud', {
+      await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
         tableName: apiEndpoint,
         operation: 'clear_all',
         moduleType: currentMode
-      });
+      }) });
       toast.success(`All ${title} records cleared successfully`);
       fetchItems();
     } catch (error: any) {

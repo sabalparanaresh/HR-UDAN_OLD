@@ -23,7 +23,7 @@ interface PincodeSearchProps {
   moduleType?: string;
 }
 
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 
 export default function PincodeSearch({ onResult, onNotFound, defaultValue = '', className, moduleType }: PincodeSearchProps) {
   const [pincode, setPincode] = useState(String(defaultValue || ''));
@@ -47,7 +47,7 @@ export default function PincodeSearch({ onResult, onNotFound, defaultValue = '',
     setIsVerified(false);
 
     try {
-      const data = await invoke<PincodeData[]>('fetch_pincode_details', { pincode, moduleType });
+      const data = await fetchApi('/api/system/cmd/fetchPincodeDetails', { method: 'POST', body: JSON.stringify({ pincode, moduleType }) });
       onResult(data);
       setIsVerified(true);
       toast.success(`${data.length} records found for Pincode`);

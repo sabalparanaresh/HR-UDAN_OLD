@@ -3,7 +3,7 @@ import { Search, ChevronDown, Check, X, Filter, User, UserCheck } from 'lucide-r
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { Employee } from '../../types';
 
@@ -137,10 +137,10 @@ export const EmployeeSearchSelect = ({
             .slice(0, 25);
         } else {
           // Backend filter
-          results = await invoke<SearchEmployee[]>('search_employees', {
+          results = await fetchApi('/api/employee/cmd/searchEmployees', { method: 'POST', body: JSON.stringify({
             query: q,
             moduleType: currentMode
-          });
+          }) });
           
           if (results && input) {
             results = results.map((emp: any) => {

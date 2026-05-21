@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { fetchApi } from '../services/apiClient';
 
 export const useFinalPayroll = (month: string, enabled: boolean = true) => {
   const [data, setData] = useState<any[]>([]);
@@ -16,7 +16,12 @@ export const useFinalPayroll = (month: string, enabled: boolean = true) => {
       setLoading(true);
       setError(null);
       try {
-        const result = await invoke<any[]>('get_final_payroll', { month });
+        const result = await fetchApi<any[]>('/api/payroll/get-final-payroll', { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month }),
+          signal: controller.signal
+        });
         
         if (isMounted && !controller.signal.aborted) {
           setData(result);

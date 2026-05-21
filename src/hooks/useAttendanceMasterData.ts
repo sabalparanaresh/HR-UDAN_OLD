@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../services/apiClient';
 import { useModule } from '../contexts/ModuleContext';
 import { toast } from 'sonner';
 import { useEffect } from 'react';
@@ -9,7 +9,7 @@ export const useAttendanceMasterData = () => {
   
   const { data, error, isError } = useQuery({
     queryKey: ['master-data', currentMode],
-    queryFn: () => invoke<any>('get_master_data', { moduleType: currentMode }),
+    queryFn: () => fetchApi<any>('/api/master-data/get-master-data', { method: 'POST', body: JSON.stringify({ moduleType: currentMode }) }),
     staleTime: 5 * 60 * 1000,
   });
 

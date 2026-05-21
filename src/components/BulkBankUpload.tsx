@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import * as XLSX from '../utils/xlsx';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../services/apiClient';
 import { useModule } from '../contexts/ModuleContext';
 import { AgGridReact } from 'ag-grid-react';
 import { 
@@ -156,10 +156,10 @@ export default function BulkBankUpload({ onSuccess }: { onSuccess: () => void })
       setUploadProgress({ current: 0, total: data.length });
 
       const promises = chunks.map(async (chunk) => {
-        const result = await invoke<any>('bulk_bank_master_upsert', { 
+        const result = await fetchApi('/api/master-data/cmd/bulkBankMasterUpsert', { method: 'POST', body: JSON.stringify({ 
           records: chunk, 
           moduleType: currentMode 
-        });
+        }) });
         completedChunks++;
         setUploadProgress({ current: completedChunks * CHUNK_SIZE, total: data.length });
         return result;

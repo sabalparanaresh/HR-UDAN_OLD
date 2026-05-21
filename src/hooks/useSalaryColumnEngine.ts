@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../services/apiClient';
 import { ColDef, ColGroupDef } from 'ag-grid-community';
 
 export interface SalaryHead {
@@ -26,11 +26,11 @@ export function useSalaryColumnEngine(options: ColumnEngineOptions) {
       setLoading(true);
       try {
         // Fetch all active heads. P module generally has all heads synced from K.
-        const data = await invoke<SalaryHead[]>('master_crud', {
+        const data = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
           tableName: 'salary_heads',
           operation: 'list',
           moduleType: 'P', 
-        });
+        }) });
         setHeads(data.filter(h => h.status)); // Only ACTIVE heads
       } catch (e) {
         console.error("Failed to fetch salary heads for column engine", e);

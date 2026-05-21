@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Usb, FolderDown, Download, Printer, HardDriveDownload, ShieldCheck, Mail } from 'lucide-react';
 import { useModule } from '../../contexts/ModuleContext';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { toast } from 'sonner';
 
 interface DistributionModalProps {
@@ -56,7 +56,7 @@ export function DistributionModal({
         user_id: currentUser?.id || 'system'
       };
 
-      const res = await invoke('distribute_report', payload) as any;
+      const res = await fetchApi('/api/system/cmd/distributeReport', { method: 'POST', body: JSON.stringify(payload) }) as any;
       
       if (res && res.status === 'success') {
          // Immutable Log created on backend.

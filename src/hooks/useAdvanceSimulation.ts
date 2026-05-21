@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { fetchApi } from '../services/apiClient';
 import { toast } from 'sonner';
 
 export const useAdvanceSimulation = (
@@ -25,16 +25,22 @@ export const useAdvanceSimulation = (
         designationId: employeeFilters?.designationIds?.length > 0 ? employeeFilters.designationIds : null,
       };
 
-      const kResults = await invoke<any[]>('calculate_k_module_wages', {
-        month: wageMonth,
-        filters: filtersObj,
-        fromDate,
-        toDate
+      const kResults = await fetchApi<any[]>('/api/payroll/calculate-kmodule-wages', {
+        method: 'POST',
+        body: JSON.stringify({
+          month: wageMonth,
+          filters: filtersObj,
+          fromDate,
+          toDate
+        })
       });
 
-      const pResults = await invoke<any[]>('calculate_p_module_statutory', {
-        month: wageMonth,
-        kResults
+      const pResults = await fetchApi<any[]>('/api/payroll/calculate-pmodule-statutory', {
+        method: 'POST',
+        body: JSON.stringify({
+          month: wageMonth,
+          kResults
+        })
       });
 
       return pResults
@@ -81,14 +87,15 @@ export const useAdvanceSimulation = (
       paymentType: string, 
       remark: string 
     }) => {
-      await invoke('post_advance_transactions', {
-        advances: validEntries.map(v => ({ emp_id: v.emp_id, amount: v.advance_input })),
+      const dt = validEntries.map(v => ({ emp_id: v.emp_id, amount: v.advance_input }));
+      await fetchApi('/api/payroll/advance/post', { method: 'POST', body: JSON.stringify({
+        advances: dt,
         monthYear: wageMonth,
         userId: 1, // Ensure userId is passed (like active user id, but we can assume 1 for now or skip)
         authorisedBy: authorizerId,
         paymentMode: paymentType,
         remark: remark
-      });
+      })});
     },
     onSuccess: () => {
       toast.success('Advances posted successfully');

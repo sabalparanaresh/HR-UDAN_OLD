@@ -13,7 +13,7 @@ import {
   Info,
   X
 } from 'lucide-react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { toast } from 'sonner';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -115,11 +115,11 @@ export default function BulkEmployeeUpload({ onSuccess, currentMode }: BulkEmplo
       const newMasters: Record<string, any[]> = {};
       for (const table of tables) {
         try {
-          const res = await invoke<any[]>('master_crud', {
+          const res = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({
             tableName: table,
             operation: 'list',
             moduleType: currentMode
-          });
+          }) });
           newMasters[table] = res;
         } catch (e) {
           if (table !== 'employees') console.error(`Failed to fetch master: ${table}`, e);
@@ -129,7 +129,7 @@ export default function BulkEmployeeUpload({ onSuccess, currentMode }: BulkEmplo
 
       // Fetch Company Config
       try {
-        const config = await invoke<any>('get_company_config', { moduleType: currentMode });
+        const config = await fetchApi<any>('/api/config/company', { headers: { 'x-module-type': currentMode } });
         setCompanyConfig(config);
       } catch (e) {
         console.error("Failed to fetch company config", e);
@@ -383,10 +383,10 @@ export default function BulkEmployeeUpload({ onSuccess, currentMode }: BulkEmplo
       let totalSyncCount = 0;
       for (let i = 0; i < chunks.length; i++) {
         setUploadProgress({ current: i * CHUNK_SIZE, total: data.length });
-        const result = await invoke<any>('bulk_employee_upsert', { 
+        const result = await fetchApi('/api/employee/cmd/bulkEmployeeUpsert', { method: 'POST', body: JSON.stringify({ 
           records: chunks[i], 
           moduleType: currentMode 
-        });
+        }) });
         if (result?.syncCount) totalSyncCount += result.syncCount;
       }
 

@@ -11,7 +11,7 @@ import {
   CustomFilterModule,
   CsvExportModule
 } from 'ag-grid-community';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 import { useModule } from '../../contexts/ModuleContext';
 import { DrilldownStep } from '../../pages/reports/DashboardEngine';
 
@@ -45,7 +45,7 @@ export function DrillDownViewer({ step, onNextStep }: { step: DrilldownStep, onN
           filters.push({ field: 'department_name', operator: 'equals', value: step.context.department_name });
         } else if (step.context?.departmentId) {
            // Provide fallback if only ID is provided
-           const depts = await invoke<any>('master_crud', { tableName: 'departments', operation: 'list', moduleType: currentMode }).catch(() => []);
+           const depts = await fetchApi('/api/master-data/crud-command', { method: 'POST', body: JSON.stringify({ tableName: 'departments', operation: 'list', moduleType: currentMode }) }).catch(() => []);
            const found = Array.isArray(depts) ? depts.find(d => d.id === step.context.departmentId) : null;
            if (found) {
               filters.push({ field: 'department_name', operator: 'equals', value: found.name });
@@ -63,7 +63,7 @@ export function DrillDownViewer({ step, onNextStep }: { step: DrilldownStep, onN
           pagination: { limit: 1000, offset: 0 },
           sorts: []
         };
-        const res = await invoke<any>('execute_report_query', req);
+        const res = await fetchApi('/api/system/cmd/executeReportQuery', { method: 'POST', body: JSON.stringify(req) });
         setData(res.data || []);
       } else if (step.type === 'SALARY_DETAILS') {
          const filters = [];
@@ -82,7 +82,7 @@ export function DrillDownViewer({ step, onNextStep }: { step: DrilldownStep, onN
           pagination: { limit: 1000, offset: 0 },
           sorts: []
         };
-        const res = await invoke<any>('execute_report_query', req);
+        const res = await fetchApi('/api/system/cmd/executeReportQuery', { method: 'POST', body: JSON.stringify(req) });
         setData(res.data || []);
       } else if (step.type === 'AUDIT_TRAIL') {
          const filters = [];
@@ -112,7 +112,7 @@ export function DrillDownViewer({ step, onNextStep }: { step: DrilldownStep, onN
           pagination: { limit: 1000, offset: 0 },
           sorts: []
         };
-        const res = await invoke<any>('execute_report_query', req);
+        const res = await fetchApi('/api/system/cmd/executeReportQuery', { method: 'POST', body: JSON.stringify(req) });
         setData(res.data || []);
       } else if (step.type === 'AUDIT_AMENDMENTS') {
          const filters = [];
@@ -130,7 +130,7 @@ export function DrillDownViewer({ step, onNextStep }: { step: DrilldownStep, onN
           pagination: { limit: 1000, offset: 0 },
           sorts: []
         };
-        const res = await invoke<any>('execute_report_query', req);
+        const res = await fetchApi('/api/system/cmd/executeReportQuery', { method: 'POST', body: JSON.stringify(req) });
         setData(res.data || []);
       }
     } catch (e) {

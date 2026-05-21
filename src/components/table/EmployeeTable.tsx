@@ -10,7 +10,7 @@ import {
   FilterFn,
   ColumnDef,
 } from '@tanstack/react-table';
-import { invokeCommand } from '../../services/apiClient';
+import { invokeCommand, fetchApi } from '../../services/apiClient';
 
 // Identity mapping for paths in web mode
 const safeConvertFileSrc = (path: string) => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { fetchApi } from '../../services/apiClient';
 import { AlertCircle } from 'lucide-react';
 
 export const CircuitBreaker = () => {
@@ -12,8 +12,8 @@ export const CircuitBreaker = () => {
 
     const checkStatus = async () => {
       try {
-        const currentStatus = await invoke<string>('get_connection_status');
-        const syncRes = await invoke<{ timestamp: string }>('get_last_sync_timestamp', { moduleType: 'K' });
+        const currentStatus = await fetchApi<string>('/api/system/connection-status');
+        const syncRes = await fetchApi<{ timestamp: string }>('/api/sync/last-sync-timestamp');
         if (isMounted && !controller.signal.aborted) {
           setStatus(currentStatus);
           if (syncRes && syncRes.timestamp) {

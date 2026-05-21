@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAttendanceTaskStore } from '../store/attendanceTaskStore';
 import { X, Play, AlertCircle, CheckCircle, RefreshCcw, Hand, XCircle, LayoutTemplate } from 'lucide-react';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../services/apiClient';
 
 export const BulkAttendanceProgressModal: React.FC = () => {
   const { status, progress, summary, error, rowsPerSec, etaSeconds, cancelTask, resetTask } = useAttendanceTaskStore();
@@ -12,7 +12,7 @@ export const BulkAttendanceProgressModal: React.FC = () => {
 
   const handleCancel = async () => {
     try {
-      await invoke('cancel_bulk_attendance', {});
+      await fetchApi('/api/attendance/cancel-bulk', { method: 'POST' });
       cancelTask();
     } catch (e) {
       console.error(e);

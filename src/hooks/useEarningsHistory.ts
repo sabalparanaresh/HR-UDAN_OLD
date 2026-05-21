@@ -35,7 +35,7 @@ export function useEarningsHistory(type: 'EARNING' | 'DEDUCTION', page: number =
       debouncedFilters.toDate,
     ],
     queryFn: async () => {
-      const result = await invoke<{ data: any[], total: number, page: number, limit: number }>('get_earning_history', {
+      const result = await fetchApi<{ data: any[], total: number, page: number, limit: number }>('/api/payroll/transaction/earning-history', { method: 'POST', body: JSON.stringify({
         employeeId: debouncedFilters.employeeId,
         transactionType: debouncedFilters.type,
         wageMonth: debouncedFilters.wageMonth,
@@ -45,7 +45,7 @@ export function useEarningsHistory(type: 'EARNING' | 'DEDUCTION', page: number =
         page: debouncedFilters.page,
         limit: debouncedFilters.limit,
         moduleType: debouncedFilters.currentMode,
-      });
+      }) });
       return result;
     },
   });

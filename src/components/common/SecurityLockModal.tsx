@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShieldAlert, X, Lock, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { invokeCommand as invoke } from '../../services/apiClient';
+import { invokeCommand as invoke, fetchApi } from '../../services/apiClient';
 
 interface SecurityLockModalProps {
   isOpen: boolean;
@@ -29,7 +29,7 @@ export default function SecurityLockModal({
     setError('');
 
     try {
-      const response = await invoke('verify_security_key', { key }) as { verified: boolean };
+      const response = await fetchApi('/api/system/cmd/verifySecurityKey', { method: 'POST', body: JSON.stringify({ key }) }) as { verified: boolean };
       if (response.verified) {
         onConfirm();
         setKey('');

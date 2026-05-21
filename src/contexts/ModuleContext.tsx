@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { invokeCommand as invoke } from '../services/apiClient';
+import { fetchApi } from '../services/apiClient';
 import { toast } from 'sonner';
 import { useWorkspaceStore } from '../store/workspaceStore';
 
@@ -27,11 +27,11 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const refreshConnectionStatus = useCallback(async () => {
     try {
-      const status = await invoke<string>('get_connection_status');
+      const status = await fetchApi<string>('/api/system/connection-status');
       const connected = status === 'CONNECTED';
       setIsConnected(connected);
       
-      const syncRes = await invoke<{ timestamp: string }>('get_last_sync_timestamp', { moduleType: 'K' });
+      const syncRes = await fetchApi<{ timestamp: string }>('/api/sync/last-sync-timestamp');
       if (syncRes && syncRes.timestamp && syncRes.timestamp !== '1970-01-01T00:00:00Z') {
         setLastStatutorySync(syncRes.timestamp);
       }
@@ -67,7 +67,7 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const toggleConnection = async () => {
     const newStatus = isConnected ? 'DISCONNECTED' : 'CONNECTED';
     try {
-      await invoke('update_connection_status', { status: newStatus });
+      await fetchApi('/api/system/connection-status', { method: 'POST', body: JSON.stringify({ status: newStatus }) });
       setIsConnected(!isConnected);
       refreshConnectionStatus();
       toast.success(`Bridge ${newStatus}`);
