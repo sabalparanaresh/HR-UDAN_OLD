@@ -13,6 +13,7 @@ import { runPostSetupMigrations } from './src-server/db/migrations.js';
 
 import { systemRouter } from './src-server/domains/system/routes.js';
 import { configRouter } from './src-server/domains/config/routes.js';
+import { reportsRouter } from './src-server/domains/reports/routes.js';
 import { authRouter } from './src-server/domains/auth/routes.js';
 import { usermanagementRouter } from './src-server/domains/user-management/routes.js';
 import { pieceRateRouter } from './src-server/domains/piece-rate/routes.js';
@@ -33,10 +34,11 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.text({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-app.use((err: any, req: any, res: any, next: any) => {
-  console.error("EXPRESS ERROR CAUGHT:", err);
-  res.status(err.status || 500).json({ error: err.message || "Internal Server Error" });
-});
+import { errorHandler } from './src-server/middleware/errorHandler.js';
+import { auditMiddleware } from './src-server/middleware/audit.js';
+import { securityHeadersMiddleware } from './src-server/middleware/security.js';
+
+app.use(securityHeadersMiddleware);
 
 // Start Legacy Subsystems and DB
 bootstrapDatabase().then(({ primaryDb, statutoryDb, dbState }: any) => {
@@ -49,13 +51,17 @@ bootstrapDatabase().then(({ primaryDb, statutoryDb, dbState }: any) => {
     next();
   });
 
+  app.use('/api', auditMiddleware(primaryDb));
+
   // Mount Domain Routers (New layered architecture)
+  app.use('/api/employee', employeeRouter);
   app.use('/api/employees', employeeRouter);
   app.use('/api/attendance', attendanceRouter);
   app.use('/api/master-data', masterDataRouter);
   app.use('/', rpcRouter);
   app.use('/api/system', systemRouter);
   app.use('/api/config', configRouter);
+  app.use('/api/reports', reportsRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/users', usermanagementRouter);
   app.use('/api/sync', syncengineRouter);
@@ -78,6 +84,8 @@ bootstrapDatabase().then(({ primaryDb, statutoryDb, dbState }: any) => {
   app.all(/^\/api\/.*/, (req: any, res: any) => {
     res.status(404).json({ error: `from server.ts API route ${req.method} ${req.path} not found` });
   });
+
+  app.use(errorHandler);
 
   // If Vite setup isn't handled by legacy, do it here
   const isProduction = process.env.NODE_ENV === 'production' && fs.existsSync(path.join(process.cwd(), 'dist'));
